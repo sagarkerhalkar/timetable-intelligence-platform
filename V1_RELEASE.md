@@ -2,7 +2,7 @@
 
 Update package: `timetable-intelligence-platform-v1.0.0-lan-ui-notifications.zip`
 
-SHA-256: `2933ba1428865fcf98b93814bcb38746e3dbd56b126f0f87a73ef5f8efa0071d`
+SHA-256: `7d4941c67088b8cf50493c3145a7d4c2e9454a2b4b6c36e514cd20ddb513a4b1`
 
 The release package includes:
 
