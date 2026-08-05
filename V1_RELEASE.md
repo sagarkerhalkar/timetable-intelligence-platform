@@ -1,14 +1,18 @@
 # v1 Windows LAN release
 
-Update package: `timetable-intelligence-platform-v1.0.0-lan-ui-notifications.zip`
+Current repair package: `timetable-intelligence-platform-v1.0.1-weekly-notification-fix.zip`
 
-SHA-256: `7d4941c67088b8cf50493c3145a7d4c2e9454a2b4b6c36e514cd20ddb513a4b1`
+SHA-256: `201174611162212467daf1ad347192ab69c1a74dea1425c3f3a077083262ca8d`
 
-The release package includes:
+## v1.0.1 repairs
 
-- the tested Windows update installer;
-- a complete clean source folder;
-- `PUBLISH_SOURCE_TO_GITHUB_V1.cmd`, which publishes that clean source to this branch through Git for Windows;
-- exclusions for databases, credentials, Google Sheet data, recipient information, logs, runtime files, and backups.
+- Weekly Timetable no longer opens empty. The web page requested 500 records while the API accepted only 100, causing HTTP 422 and a false “No matching classes” screen.
+- Weekly API now accepts up to 1000 verified timetable rows.
+- The weekly screen selects today when classes exist; otherwise it selects the first day containing classes.
+- Notification rules now have a Delete Rule action with confirmation.
+- Deleting a rule also removes its delivery-test history.
+- A guided Windows channel setup tool is included for Email, Google Chat, Telegram, WhatsApp provider webhook and Push webhook.
 
-The current LAN deployment remains `http://156.156.40.51:3500` and port 3457 remains protected.
+The working LAN deployment remains `http://156.156.40.51:3500`. Port 3457 remains protected.
+
+The repair package excludes databases, credentials, Google Sheet data, recipients, logs, runtime files and backups.
