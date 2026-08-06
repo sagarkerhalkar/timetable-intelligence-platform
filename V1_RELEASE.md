@@ -2,7 +2,7 @@
 
 Current update package: `timetable-intelligence-platform-v1.0.9-self-explaining-sheets.zip`
 
-SHA-256: `ac8583992c11d4b4b9ccd7dc8ed90a723a2a75104467bae2821b6fc50dfe7491`
+SHA-256: `69e966ccf7b622e022ed94e5dd80d85d06487a21d2fe58db6b48b23434dfac7e`
 
 ## v1.0.9 self-explaining Google Sheets
 
