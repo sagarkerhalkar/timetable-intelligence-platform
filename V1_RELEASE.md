@@ -1,22 +1,23 @@
 # v1 Windows LAN release
 
-Current update package: `timetable-intelligence-platform-v1.0.10.3-slow-sync-fix.zip`
+Current update package: `timetable-intelligence-platform-v1.0.11-performance-weekly-test-ops.zip`
 
-SHA-256: `bc4523bec67f6654e18711ffcfa0b0663a9bfb46ed2282c7c47602b4f1f6d929`
+SHA-256: `7295c2bf67286a1550c46f21b826ac781b26975c4a0ac603f2056e8260ca8c21`
 
-## v1.0.10.3 slow Google Sheet sync repair
+## v1.0.11 responsive background sync and weekly test operations
 
-- Reapplies the complete reliable hyperlink Search, Google Sheet manager, professional Test Analysis, notification guidance and understandable Change History update after v1.0.10.2 rolled back.
-- v1.0.10.2 failed because Commerce did not complete inside the installer’s fixed 12-minute validation window; this was a slow live sync, not a code or Sheet-format error.
-- The installer starts in controlled validation mode with automatic all-source refresh temporarily disabled.
-- `YT Science 2026-27` and `Test Series - 2026` are refreshed and validated first, with live progress and up to 30 minutes per required source.
-- The app is then restarted in normal automatic-refresh mode and Commerce, Humanities, Science, Nirmaan and other connected workbooks are queued in the background.
-- A slow non-critical workbook no longer rolls back the already validated Search and UI update.
-- YT Science Class 12 must expose at least 70 indexed records before success; Test Series must expose at least 700 structured tests.
-- A visible `Installed build: v1.0.10.3` label is shown in the sidebar, and API health reports version `1.0.10.3`.
-- Automated validation: 63 backend tests passed; 41 TypeScript/TSX files parsed with zero syntax errors; Python compilation and ZIP integrity passed.
+- Fixes the real 30-minute Test Series stall. The previous sync opened the heavily formatted workbook three times; v1.0.11 skips the redundant third generic parse after structured test records have already been extracted.
+- Profiles and generic parsers scan populated/hyperlinked cells instead of expanding every formatted blank cell.
+- XLSX work runs outside the FastAPI request loop and all Google Sheets use one serialized queue, keeping the local API and pages responsive.
+- Old successful timetable, Search and Test data remain visible until a complete replacement dataset is ready. Interrupted sync states are repaired at startup.
+- Automatic checks begin after a two-minute startup delay and refresh only stale sources. Empty Search and dashboard totals use SQL-backed queries.
+- The Windows installer validates code, 69 backend tests, TypeScript and the full Next.js build, checks the new pages, then queues Google Sheets in the background. It does not wait 30 minutes or roll back because a remote Sheet is slow.
+- Weekly Test Monitor rule: Monday 9:00 AM through Saturday 6:00 PM uploads go to the coming Sunday; App readiness is Saturday 6:00 PM; Result Dashboard is Monday 6:00 PM; Video Solution is Tuesday 6:00 PM.
+- Clicking a Test Series tab shows total tests by subject and the exact next-Sunday subject/test counts.
+- Sheet Updates defaults to an Excel-style audit table with Sheet, tab, row, column, cell, field, change, before and after.
+- Real local parser benchmarks: Test Series about 5 seconds (754 tests, 782 Search records), YT Science about 0.6 seconds (Class 11 = 95, Class 12 = 77), Commerce about 4.8 seconds (59 timetable entries, 703 Search records).
 - Existing database, connected Google Sheets, notification rules and isolated ports remain preserved. Port 3457 remains protected.
 
 The working LAN deployment remains `http://156.156.40.51:3500`.
 
-The release package excludes credentials, recipients, logs, runtime files and backups.
+The release package excludes databases, credentials, recipients, logs, runtime files and backups.
