@@ -1,21 +1,20 @@
 # v1 Windows LAN release
 
-Current update package: `timetable-intelligence-platform-v1.0.5-source-search-update.zip`
+Current update package: `timetable-intelligence-platform-v1.0.7-test-monitor-search-fix.zip`
 
-SHA-256: `234d68df3d1f056822109cce2e658bb71ea400e184888e9566bebe660d618d6d`
+SHA-256: `75d3c29cd64d5bf890cfcbc9cfbbdc8d845fe5c5746be961855ddd53860eb2b6`
 
-## v1.0.5 source-wise search and simple Sheet Updates
+## v1.0.7 structured Test Series search and Test Monitor
 
-- Search can be restricted to one connected Google Sheet and then one tab.
-- Search indexes videos, PDFs, tests/documents, presentations, spreadsheets and other learning links.
-- A local Hindi/Sanskrit transliteration index allows normal English-keyboard queries such as `kabir` to find `कबीर`; no online translation service is used.
-- Newly connected content/test Sheets use a generic header-driven parser for Course, Class, Subject, Chapter/Topic, Teacher/Made by, file link and status columns. Official timetable workbooks continue to use their dedicated verified parsers.
-- The supplied `Test Series - 2026` workbook was audited: 10 tabs and 780 searchable files, including 751 documents/test papers and 26 PDFs.
-- Notification messages now show `Stream → Class → Batch → Subject`, followed by the full lesson/topic. Nirmaan variants such as New NCERT, Old NCERT and Nirmaan 2.0 remain visible.
-- Sheet Updates combines several changed cells from the same row into one plain-language story. Technical coordinates remain hidden under an admin detail section.
-- The installer connects `Test Series - 2026` when needed, rebuilds the multilingual index, runs 53 backend tests, requires TypeScript and Next.js production builds, and restores the previous database/files if validation fails.
-
-Live-copy audit totals across five workbooks: 81 tabs, 930 timetable entries and 4,315 searchable files.
+- `Test Series - 2026` is parsed as a structured test-operation workbook instead of a generic list of links.
+- Search indexes Google Sheet, tab, course, class, subject, chapter, topic, creator, file name, App Status, Test Date, Result Dashboard and Video Solution Update.
+- Google Sheet and tab filters continue to work as new sources are connected.
+- Romanised English queries are stored with the original Indic text; for example, `kabir` finds `कबीर के दोहे` in `Nirman 2026`.
+- The Test Monitor shows App Status for `PRARAMBH 2026` and `Nirman 2026`, and Result Dashboard / Video Solution for due tests in `PRARAMBH 2026`.
+- One setup form creates four alerts: new test after each successful 30-minute Sheet check, Sunday App Status, Monday 5:00 PM Result Dashboard and Tuesday 5:00 PM Video Solution. Times are editable.
+- The first successful scan is a baseline, so hundreds of historical tests are not falsely reported as newly added.
+- Live snapshot validation found 754 structured test records and 802 searchable file entries across 10 tabs.
+- The Windows installer runs 58 backend tests, TypeScript validation, the full Next.js production build, live Test Series sync and final API/page checks before reporting success.
 
 The working LAN deployment remains `http://156.156.40.51:3500`. Port 3457 remains protected.
 
