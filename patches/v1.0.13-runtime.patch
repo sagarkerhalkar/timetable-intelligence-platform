@@ -1,0 +1,160 @@
+--- a/apps/web/app/globals.css
++++ b/apps/web/app/globals.css
+@@ Today stream cards
+-.today-source-check span{display:flex;align-items:center;gap:8px;padding:9px 12px;border-radius:12px;background:rgba(236,248,251,.9);font-weight:800}
++.today-source-check .today-stream-link{display:flex;align-items:center;gap:8px;min-height:50px;padding:9px 12px;border:1px solid transparent;border-radius:12px;background:rgba(236,248,251,.9);font-weight:800;cursor:pointer;transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease,background .16s ease}
++.today-source-check .today-stream-link:hover,.today-source-check .today-stream-link:focus-visible{transform:translateY(-1px);border-color:rgba(8,125,152,.35);background:#fff;box-shadow:0 8px 18px rgba(24,63,86,.09);outline:none}
+@@ Test tab feedback
++.test-tab-switcher button.pending,.test-tab-switcher button:disabled { cursor:progress; opacity:1; }
++.test-tab-switcher button.pending::after { content:""; display:inline-block; width:10px; height:10px; margin-left:.45rem; border:2px solid rgba(255,255,255,.5); border-top-color:#fff; border-radius:50%; animation:spin .7s linear infinite; }
++.test-tab-switcher-wrap[aria-busy="true"] .test-tab-loading { color:#0a6b86; font-weight:800; }
+
+--- a/apps/web/app/page.tsx
++++ b/apps/web/app/page.tsx
+@@ Today stream summary
+-            {streamCounts.map((item) => <span key={item.stream}><b>{item.count}</b>{item.stream}</span>)}
++            {streamCounts.map((item) => (
++              <Link
++                className="today-stream-link"
++                key={item.stream}
++                href={`/timetable?date=${encodeURIComponent(today)}&stream=${encodeURIComponent(item.stream)}`}
++                aria-label={`Open today’s ${item.stream} timetable (${item.count} classes)`}
++              >
++                <b>{item.count}</b>{item.stream}<small>Open →</small>
++              </Link>
++            ))}
+
+--- a/apps/web/app/tests/page.tsx
++++ b/apps/web/app/tests/page.tsx
+@@
+-import { getSources, getTestMonitor } from "@/lib/api";
++import { getSources, getTestMonitor, getTestTabCounts } from "@/lib/api";
+@@
+-  const [allData, sources] = await Promise.all([getTestMonitor(), getSources()]);
+-  const data = selectedTab ? await getTestMonitor(undefined, selectedTab) : allData;
++  const [data, tabCounts, sources] = await Promise.all([
++    getTestMonitor(undefined, selectedTab || undefined),
++    getTestTabCounts(),
++    getSources(),
++  ]);
++  const allTabTotal = Object.values(tabCounts).reduce((sum, count) => sum + count, 0);
+@@
+-      <TestTabSwitcher selectedTab={selectedTab} counts={allData.summary.sheet_counts} total={allData.summary.total_tests} />
++      <TestTabSwitcher selectedTab={selectedTab} counts={tabCounts} total={allTabTotal} />
+
+--- a/apps/web/components/test-tab-switcher.tsx
++++ b/apps/web/components/test-tab-switcher.tsx
+@@
++  const activeTab = pendingTab ?? selectedTab;
++  const navigating = pendingTab !== null && pendingTab !== selectedTab;
++
+   function changeTab(tab: string) {
+-    if (tab === selectedTab) return;
++    if (tab === activeTab) return;
+     setPendingTab(tab);
+     const href = tab ? `/tests?tab=${encodeURIComponent(tab)}` : "/tests";
+-    startTransition(() => router.push(href, { scroll: true }));
++    startTransition(() => router.replace(href, { scroll: false }));
+   }
+@@
+-    <div className="test-tab-switcher-wrap">
++    <div className="test-tab-switcher-wrap" aria-busy={navigating || isPending}>
+@@
+-        <button type="button" role="tab" aria-selected={!selectedTab} className={!selectedTab ? "active" : ""} onClick={() => changeTab("")}>All tests <b>{total}</b></button>
++        <button type="button" role="tab" aria-selected={!activeTab} className={!activeTab ? `active${navigating ? " pending" : ""}` : ""} disabled={navigating && !activeTab} onClick={() => changeTab("")}>All tests <b>{total}</b></button>
+@@
+-          <button type="button" role="tab" aria-selected={selectedTab === name} className={selectedTab === name ? "active" : ""} key={name} onClick={() => changeTab(name)}>{name} <b>{count}</b></button>
++          <button type="button" role="tab" aria-selected={activeTab === name} className={activeTab === name ? `active${navigating ? " pending" : ""}` : ""} disabled={navigating && activeTab === name} key={name} onClick={() => changeTab(name)}>{name} <b>{count}</b></button>
+@@
+-      <span className="test-tab-loading" aria-live="polite">{isPending ? `Loading ${pendingTab || "all tests"}…` : selectedTab ? `Showing ${selectedTab}` : "Showing all monitored tests"}</span>
++      <span className="test-tab-loading" aria-live="polite">{navigating || isPending ? `Opening ${pendingTab || "all tests"}… one click accepted` : selectedTab ? `Showing ${selectedTab}` : "Showing all monitored tests"}</span>
+
+--- a/apps/web/lib/api.ts
++++ b/apps/web/lib/api.ts
+@@
++export async function getTestTabCounts(sourceId?: string): Promise<Record<string, number>> {
++  const query = queryString({ source_id: sourceId });
++  return getJson(`/api/v1/test-monitor/tabs${query ? `?${query}` : ""}`, {});
++}
+
+--- a/services/api/app/database.py
++++ b/services/api/app/database.py
+@@
++    def test_sheet_counts(self, source_id: str | None = None) -> dict[str, int]:
++        sql = "SELECT sheet_name, COUNT(*) AS total FROM test_records"
++        params: list[object] = []
++        if source_id:
++            sql += " WHERE source_id=?"
++            params.append(source_id)
++        sql += " GROUP BY sheet_name ORDER BY total DESC, sheet_name COLLATE NOCASE"
++        with self.connection() as connection:
++            rows = connection.execute(sql, params).fetchall()
++        return {str(row["sheet_name"]): int(row["total"]) for row in rows}
++
+--- a/services/api/app/api/routes.py
++++ b/services/api/app/api/routes.py
+@@
++@router.get("/test-monitor/tabs", response_model=dict[str, int])
++def test_monitor_tabs(
++    source_id: str | None = None,
++    database: Database = Depends(get_database),
++) -> dict[str, int]:
++    """Lightweight Test Monitor navigation counts."""
++    if source_id is None:
++        default_source = _default_test_source(database)
++        source_id = default_source.id if default_source else None
++    return database.test_sheet_counts(source_id=source_id)
++
+@@
+-    records = database.list_test_records(source_id=source_id)
+-    if sheet_name:
+-        records = [item for item in records if item.sheet_name.casefold() == sheet_name.casefold()]
++    records = database.list_test_records(
++        source_id=source_id,
++        sheet_names=[sheet_name] if sheet_name else None,
++    )
+
+--- a/services/api/app/config.py
++++ b/services/api/app/config.py
+@@
+-    app_version: str = "1.0.12"
++    app_version: str = "1.0.13"
+
+--- /dev/null
++++ b/services/api/tests/test_v113_fast_navigation.py
+@@
++from datetime import UTC, datetime
++
++from fastapi.testclient import TestClient
++
++from app.database import Database
++from app.models import SheetSource, TestRecord
++
++TEST_SERIES_SHEET_ID = "1ZYbITcTnAAbrLOyQ3pzaykEAmOt9Q1EH6gkImY33JXQ"
++
++def _source() -> SheetSource:
++    return SheetSource(id="test-nav-source", name="Test Series - 2026", url=f"https://docs.google.com/spreadsheets/d/{TEST_SERIES_SHEET_ID}/edit", spreadsheet_id=TEST_SERIES_SHEET_ID, enabled=True, created_at=datetime.now(UTC))
++
++def _record(record_id: str, sheet_name: str, row: int) -> TestRecord:
++    return TestRecord(id=record_id, source_id="test-nav-source", workbook_name="Test Series - 2026", sheet_name=sheet_name, source_row=row, class_name="Class 12", subject="Physics", topic=f"Test {row}", app_status="Pending", test_date_status="07-08-2026", fingerprint=f"fingerprint-{record_id}")
++
++def test_test_tab_counts_use_compact_database_aggregation(database: Database) -> None:
++    source = _source()
++    database.upsert_source(source)
++    database.replace_test_records(source.id, [_record("p1", "PRARAMBH 2026", 2), _record("p2", "PRARAMBH 2026", 3), _record("n1", "Nirman 2026", 2)])
++    assert database.test_sheet_counts(source.id) == {"PRARAMBH 2026": 2, "Nirman 2026": 1}
++    filtered = database.list_test_records(source_id=source.id, sheet_names=["Nirman 2026"])
++    assert [item.id for item in filtered] == ["n1"]
++
++def test_test_tab_counts_endpoint_is_lightweight(database: Database, client: TestClient) -> None:
++    source = _source()
++    database.upsert_source(source)
++    database.replace_test_records(source.id, [_record("p1", "PRARAMBH 2026", 2), _record("n1", "Nirman 2026", 2)])
++    response = client.get("/api/v1/test-monitor/tabs")
++    assert response.status_code == 200
++    assert response.json() == {"Nirman 2026": 1, "PRARAMBH 2026": 1}
++    filtered = client.get("/api/v1/test-monitor", params={"sheet_name": "Nirman 2026"})
++    assert filtered.status_code == 200
++    payload = filtered.json()
++    assert payload["summary"]["total_tests"] == 1
++    assert payload["summary"]["sheet_counts"] == {"Nirman 2026": 1}
