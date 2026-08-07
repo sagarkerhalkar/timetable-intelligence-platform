@@ -1,19 +1,30 @@
 # v1 Windows LAN release
 
-Current update package: `timetable-intelligence-platform-v1.0.11.1-typescript-build-fix.zip`
+Current update package: `timetable-intelligence-platform-v1.0.13-fast-navigation.zip`
 
-SHA-256: `356a32b55d8ada232032ab355261f712f0f4c83e3d251f531914a94391e694ee`
+SHA-256: `fdbb8b647c4e238be4c0238959cdf5cf9bc972e9976359f9ed2d670bac30fcbe`
 
-## v1.0.11.1 strict TypeScript build repair
+## v1.0.13 fast navigation and one-click Test Monitor
 
-- Reapplies the complete v1.0.11 responsive background sync, reliable Search, Google Sheet manager, weekly Sunday Test Operations, notification guidance and Excel-style Sheet Updates update after the v1.0.11 Windows build rolled back.
-- Fixes the exact `app/changes/page.tsx` errors TS2322 and TS2532. The project enables `strict` and `noUncheckedIndexedAccess`, so regular-expression capture groups are checked before Row, Column and Cell values are created.
-- Strict TypeScript settings remain enabled; the repair does not use unsafe casts or disable compiler checks.
-- Automated validation: 69 backend tests passed, Python compilation passed, strict `noUncheckedIndexedAccess` regression passed, all 41 TypeScript/TSX files transpiled without syntax diagnostics, full source strict check with local framework declarations passed, PowerShell structure/interpolation checks passed, and ZIP integrity passed.
-- The Windows installer still runs the real installed dependency tree through `npm run typecheck` and the complete Next.js production build before reporting success. Any failure restores the previous code, database and `.next` build.
-- The application reports build `v1.0.11.1`; the npm package uses the valid SemVer value `1.0.11-patch.1`.
-- Existing database, connected Google Sheets, notification rules and isolated ports remain preserved. Port 3457 remains protected.
+- Today now makes Commerce, Science, Humanities and Nirmaan real clickable cards. One click opens the exact current-day stream timetable using date + stream filters.
+- Test Monitor now gives immediate visual feedback on the first click. The clicked PRARAMBH/Nirman/other tab becomes active at once and duplicate clicks on the already-pending tab are ignored.
+- A selected Test Monitor tab now performs one analytics request instead of first loading all tests and then loading the selected tab again.
+- Selected test tabs are filtered directly in SQLite with the existing `test_records(source_id, sheet_name)` index instead of loading all test records and filtering them in Python.
+- New lightweight `/api/v1/test-monitor/tabs` uses SQL `GROUP BY` counts so the navigation bar no longer requires a full analytics payload.
+- v1.0.12 human-readable Sheet Updates, grouped same-row/same-field changes, directly clickable changed links and Monday-Saturday-to-Sunday test-cycle logic are preserved.
+- v1.0.11.1 strict TypeScript `cellParts()` protection remains in place; strict and `noUncheckedIndexedAccess` stay enabled.
+
+## Validation
+
+- Local SQLite fast-tab aggregation and selected-tab filtering regressions passed.
+- Changed Python files compile successfully.
+- Changed TypeScript/TSX files transpile with zero syntax diagnostics.
+- Strict TSX checks with `strict` + `noUncheckedIndexedAccess` passed for Today, Test Monitor and the tab switcher using local framework declaration stubs.
+- Strict `api.ts` + `types.ts` check passed.
+- PowerShell structure/interpolation validation passed.
+- ZIP integrity passed.
+- The Windows installer still runs the complete backend tests, real `npm run typecheck`, complete Next.js production build, API version check, Today stream page checks and filtered Test-tab timing checks before accepting the update. Any failure restores the previous files, both database locations and `.next` build.
 
 The working LAN deployment remains `http://156.156.40.51:3500`.
 
-The release package excludes databases, credentials, recipients, logs, runtime files and backups.
+The release package excludes databases, credentials, recipients, logs, runtime files and backups. Protected development port 3457 is not changed.
