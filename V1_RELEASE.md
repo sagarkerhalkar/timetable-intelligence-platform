@@ -1,19 +1,21 @@
 # v1 Windows LAN release
 
-Current update package: `timetable-intelligence-platform-v1.0.11.1-typescript-build-fix.zip`
+Current candidate package: `timetable-intelligence-platform-v1.0.15.1-stable-test-gate-fix.zip`
 
-SHA-256: `356a32b55d8ada232032ab355261f712f0f4c83e3d251f531914a94391e694ee`
+SHA-256: `28a13f66f9cf1d6732877663a26d3616a67bc09f0e41dac8667e3b98ba17792c`
 
-## v1.0.11.1 strict TypeScript build repair
+## v1.0.15.1 stability / calendar-independent parser-test correction
 
-- Reapplies the complete v1.0.11 responsive background sync, reliable Search, Google Sheet manager, weekly Sunday Test Operations, notification guidance and Excel-style Sheet Updates update after the v1.0.11 Windows build rolled back.
-- Fixes the exact `app/changes/page.tsx` errors TS2322 and TS2532. The project enables `strict` and `noUncheckedIndexedAccess`, so regular-expression capture groups are checked before Row, Column and Cell values are created.
-- Strict TypeScript settings remain enabled; the repair does not use unsafe casts or disable compiler checks.
-- Automated validation: 69 backend tests passed, Python compilation passed, strict `noUncheckedIndexedAccess` regression passed, all 41 TypeScript/TSX files transpiled without syntax diagnostics, full source strict check with local framework declarations passed, PowerShell structure/interpolation checks passed, and ZIP integrity passed.
-- The Windows installer still runs the real installed dependency tree through `npm run typecheck` and the complete Next.js production build before reporting success. Any failure restores the previous code, database and `.next` build.
-- The application reports build `v1.0.11.1`; the npm package uses the valid SemVer value `1.0.11-patch.1`.
-- Existing database, connected Google Sheets, notification rules and isolated ports remain preserved. Port 3457 remains protected.
+- v1.0.15 correctly rolled back on 10 Aug 2026 when two official-parser tests became calendar-dependent.
+- The Science and Humanities fixtures hard-coded Tuesday 4 Aug 2026. On Monday 10 Aug that date moved into the previous week, so the production parser correctly added a current-week recurring fallback and the old `len(items) == 1` assertions failed.
+- The production parser business logic is unchanged.
+- The subject/schedule tests now use the Tuesday of the active India week.
+- A separate regression verifies previous-week planner data produces the intended current-week recurring fallback.
+- The v1.0.15 Monday current-week fix remains: Monday 10 Aug 2026 maps to 10-16 Aug 2026.
+- v1.0.14 performance work, v1.0.14.1 pagination repair, v1.0.13 one-click navigation and v1.0.12 human-readable Sheet Updates/Test logic are retained.
+- The release package removes compiled Python cache files.
+- The Windows installer still requires the full backend suite, web unit tests, strict TypeScript, full Next.js build, API version check and all-main-tab smoke checks before accepting the release. Any failure rolls back.
 
-The working LAN deployment remains `http://156.156.40.51:3500`.
+The working LAN deployment remains `http://156.156.40.51:3500` and protected port 3457 is not changed.
 
-The release package excludes databases, credentials, recipients, logs, runtime files and backups.
+The release excludes databases, credentials, recipients, Google Sheet data, logs, runtime files and backups.
