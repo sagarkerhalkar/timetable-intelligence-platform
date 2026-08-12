@@ -1,93 +1,70 @@
-# Current Project Context — Timetable Intelligence Platform
+# Timetable Intelligence Platform — Current Project Context
 
-This document is the short continuation source for a new ChatGPT/development session.
+## Purpose
+Windows/LAN application that reads trusted Google Sheets for timetable/content/test intelligence and includes a commercial QR Studio.
+
+## Sheet sources
+1. Prarambh Humanities 11/12
+2. Prarambh Science 11/12
+3. Master Commerce 11/12
+4. Nirmaan Class 8
+
+Parser rules:
+- Humanities/Science/Commerce: Weekly Planner + Time Table related tabs.
+- Nirmaan: Weekly Planner only.
+- Parsing must be resilient to row/column movement.
 
 ## Runtime
+- Windows target: `D:\timetable-intelligence-platform`
+- Web: 3500
+- API: 3550
+- Public QR host: `https://nexttoppers.sagarkerhalkar.com`
+- Port 3457 is protected and must not be touched.
 
-- Windows application root: `D:\\timetable-intelligence-platform`
-- Web: port 3500
-- API: port 3550
-- Protected development port 3457 must never be modified by release installers.
-- Public dynamic QR host is configured separately from the public repository.
+## Important timetable logic
+- India civil Monday–Sunday week boundaries; never use UTC weekday math for India civil dates.
+- Today cards open exact date + stream.
+- Test Monitor Mon–Sat Test Date maps to that week's Sunday for current-week readiness; original date remains visible.
+- Sheet Updates default to human grouped stories; technical cell audit is secondary.
 
-## Timetable rules that must not regress
+## QR locked requirements through v1.0.24
+- 7 QR types: Calendar, Contact, Email, Geo, Phone, URL, Wi-Fi.
+- Advanced QR styling: dots, marker border, marker center, colors, frame, logo sizing.
+- Branded scan screen: animated brand/logo/full-page image, image/logo sizing.
+- Anonymous and Identify-with-Email modes.
+- Maximum legitimate anonymous device/browser telemetry where exposed.
+- Verified scan counting; preview bots do not inflate people metrics.
+- Unique browser/device is not falsely described as unique human person.
+- Channel/source attribution: Exact / Detected / Unknown.
+- My QR Codes lifecycle: active/inactive, edit, downloads, clear scans, delete.
+- Multiple server-side reusable QR templates.
+- Bulk URL QR generation from one template using only Name + URL.
+- Every bulk-generated QR has independent analytics.
+- Template deletion must not delete existing generated QR codes.
+- Template/shared image assets must not be removed while another QR/template still references them.
 
-- Calendar-week calculations use India civil Monday-Sunday boundaries; never derive the weekday from a UTC-converted midnight.
-- Today stream cards open the exact current date + stream timetable.
-- Test Monitor maps Monday-Saturday source Test Dates to that same week's Sunday for readiness/counts while keeping the original source date visible; Sunday remains Sunday.
-- Sheet Updates default to human grouped change stories; technical cell audit is secondary.
-- Release installer backs up changed files/databases/build, runs all gates, and rolls back on any failure.
+## Release history lesson
+Do not weaken tests to make a release pass. When display/API contracts change, update all cumulative regressions. Windows runtime validation is authoritative; local/static checks are not enough to claim release success.
 
-## QR Studio — locked product behavior
+## GitHub policy
+Repository: `sagarkerhalkar/timetable-intelligence-platform`
+Stable source branch: `v1`.
+Public repository must never contain databases, credentials, recipient lists, private Sheet data, runtime logs, cookies or tokens.
+Release candidates should go to a separate branch/PR until Windows acceptance succeeds.
 
-QR types:
-- Calendar Event
-- Contact/vCard
-- Email
-- Geo Location
-- Phone
-- URL
-- Wi-Fi
+## GitHub v1.0.24 handoff
 
-Tracking:
-- `tracked`: branded web scan experience + verified analytics.
-- `direct`: native action payload; direct Wi-Fi is used for the normal OS Join Network flow and cannot provide equivalent web analytics.
-
-Identity:
-- Anonymous first-party device/browser identifier.
-- Optional Identify with Email, requiring explicit scanner input.
-- Do not claim silent Gmail or MAC-address collection.
-
-Verified analytics:
-- browser confirmation counts as a verified scan;
-- link-preview/server fetches do not inflate primary scan KPIs;
-- total verified scans and anonymous unique browser/devices are separate metrics;
-- platform/source attribution is Exact when tagged, otherwise Detected/Unknown.
-
-Device Intelligence:
-- collect legitimate browser-exposed telemetry where available;
-- unsupported optional fields must never block scanning;
-- compact summaries in UI, deep technical telemetry expandable.
-
-## v1.0.24 feature set
-
-Adds server-side reusable templates and Bulk Create.
-
-Template stores:
-- name/description;
-- tracking and identity modes;
-- QR design (logo, colors, dots, markers, frame, sizes);
-- scan-screen experience (logo/full-screen image, colors, animation/settings);
-- default flag.
-
-Bulk Create:
-- choose one tracked template;
-- supply only `Name + URL` for each campaign;
-- up to 500 rows per request;
-- every QR gets a unique ID + slug and independent analytics;
-- deleting a template never deletes already-created QR campaigns.
+- Repository: `sagarkerhalkar/timetable-intelligence-platform`
+- Stable branch: `v1`
+- Release-candidate branch: `v1.0.24-qr-templates-bulk-analytics`
+- Draft PR: `#12`
+- Do not merge the release candidate until the real Windows installer completes all gates without rollback.
+- The public branch contains sanitized continuation docs plus actual v1.0.24 Templates/Bulk frontend source and the independent-per-QR analytics regression test.
 
 ## v1.0.24.1 strict TypeScript correction
 
-The first real v1.0.24 Windows run passed 105/105 backend tests and 16/16 web regression tests, then stopped at four TS2532 errors in the new Bulk Generator parser.
+The first v1.0.24 Windows run proved 105/105 backend tests and 16/16 web tests, then stopped at four TS2532 errors in the new Bulk Generator parser because the repository uses `strict` + `noUncheckedIndexedAccess`. v1.0.24.1 moves bulk parsing to `apps/web/lib/qr-bulk.ts`, adds `qr-bulk.test.ts`, and requires strict semantic TypeScript validation before packaging. No v1.0.24 product feature was removed or changed.
 
-Root cause: the repository enables `strict` and `noUncheckedIndexedAccess`, but the pre-package v1.0.24 frontend validation was weaker than the real Windows `tsc --noEmit` gate. Indexed values such as `tab[0]`, `comma[0]`, `match[1]` and `match[2]` were therefore still considered possibly undefined.
+## v1.0.25 UI policy
 
-v1.0.24.1:
-- moves bulk row parsing into `apps/web/lib/qr-bulk.ts`;
-- adds explicit nullish fallbacks before indexed values are used;
-- adds `qr-bulk.test.ts` for spreadsheet-tab, CSV, `Name URL`, and malformed-row parsing;
-- requires semantic TypeScript validation with both `strict=true` and `noUncheckedIndexedAccess=true` before future packaging;
-- changes no QR template, analytics, Wi-Fi, identity, timetable, Test Monitor or Sheet Updates product behavior.
-
-## Repository safety
-
-Never commit:
-- databases;
-- credentials/secrets/tokens/cookies;
-- recipient/member data;
-- private Google Sheet contents;
-- runtime logs;
-- uploaded private/customer branding assets.
-
-Stable branch stays `v1` until the real Windows installer accepts a release candidate.
+The QR product now follows the same no-endless-page rule used elsewhere. My QR Codes, Templates, Bulk input/results, Device Intelligence and Recent Scan History use a shared page system. My QR Codes uses large responsive cards with actual QR previews, Copy Source Link, Copy QR Link, Show QR, checkbox multi-select and Delete Selected. Multi-delete reuses the existing QR delete endpoint so shared template/logo/background asset reference protection remains unchanged.
