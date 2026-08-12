@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { ChangeEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { QrProductNav } from "../../../components/qr-product-nav";
+import { parseBulkQrRows } from "../../../lib/qr-bulk";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "/backend";
 type Template={id:string;name:string;description:string;tracking_mode:string;identity_mode:string;is_default:boolean;qr_count:number;design:{foreground_color:string;background_color:string;logo_asset_id:string|null};experience:{mode:string;asset_id:string|null;accent_color:string;background_color:string}};
@@ -10,16 +11,14 @@ type Row={name:string;url:string};
 type Created={id:string;name:string;slug:string;target_url:string;template_name:string|null;total_scans:number;unique_visitors:number};
 
 function validUrl(value:string){try{const u=new URL(value.trim());return u.protocol==="http:"||u.protocol==="https:"}catch{return false}}
-function parseRows(raw:string):Row[]{return raw.split(/\r?\n/).map(line=>line.trim()).filter(Boolean).map(line=>{const tab=line.split("\t");if(tab.length>=2)return{name:tab[0].trim(),url:tab.slice(1).join("\t").trim()};const comma=line.split(",");if(comma.length>=2)return{name:comma[0].trim().replace(/^"|"$/g,""),url:comma.slice(1).join(",").trim().replace(/^"|"$/g,"")};const match=line.match(/^(.*?)\s+(https?:\/\/\S+)$/i);return match?{name:match[1].trim(),url:match[2].trim()}:{name:line,url:""}})}
-
 export default function QrBulkPage(){
   const [templates,setTemplates]=useState<Template[]>([]);const [selected,setSelected]=useState("");const [rows,setRows]=useState<Row[]>([{name:"",url:""},{name:"",url:""},{name:"",url:""}]);const [paste,setPaste]=useState("");const [busy,setBusy]=useState(false);const [error,setError]=useState("");const [message,setMessage]=useState("");const [created,setCreated]=useState<Created[]>([]);
   const load=useCallback(async()=>{try{const r=await fetch(`${API}/api/v1/qr-templates`,{cache:"no-store"});if(!r.ok)throw new Error();const data=await r.json() as Template[];setTemplates(data);const query=new URLSearchParams(window.location.search).get("template");setSelected(current=>current||((query&&data.some(x=>x.id===query))?query:data.find(x=>x.is_default)?.id||data[0]?.id||""))}catch{setError("Could not load templates.")}},[]);useEffect(()=>{void load()},[load]);
   const template=templates.find(x=>x.id===selected);const analyticsReady=template?.tracking_mode==="tracked";const validRows=useMemo(()=>rows.filter(row=>row.name.trim()&&validUrl(row.url)),[rows]);const invalidCount=rows.filter(row=>(row.name.trim()||row.url.trim())&&!(row.name.trim()&&validUrl(row.url))).length;
   function setRow(index:number,key:keyof Row,value:string){setRows(current=>current.map((row,i)=>i===index?{...row,[key]:value}:row))}
   function addRow(){setRows(current=>[...current,{name:"",url:""}])}
-  function applyPaste(){const parsed=parseRows(paste);if(!parsed.length){setError("Paste at least one Name + URL row.");return}setRows(parsed);setPaste("");setMessage(`${parsed.length} rows imported.`);setError("")}
-  async function filePicked(event:ChangeEvent<HTMLInputElement>){const file=event.target.files?.[0];if(!file)return;const text=await file.text();const parsed=parseRows(text);if(!parsed.length){setError("The CSV/TXT file did not contain Name + URL rows.");return}setRows(parsed);setMessage(`${parsed.length} rows loaded from ${file.name}.`)}
+  function applyPaste(){const parsed=parseBulkQrRows(paste);if(!parsed.length){setError("Paste at least one Name + URL row.");return}setRows(parsed);setPaste("");setMessage(`${parsed.length} rows imported.`);setError("")}
+  async function filePicked(event:ChangeEvent<HTMLInputElement>){const file=event.target.files?.[0];if(!file)return;const text=await file.text();const parsed=parseBulkQrRows(text);if(!parsed.length){setError("The CSV/TXT file did not contain Name + URL rows.");return}setRows(parsed);setMessage(`${parsed.length} rows loaded from ${file.name}.`)}
   async function generate(){if(!selected){setError("Choose a template first.");return}if(invalidCount||!validRows.length){setError("Every non-empty row needs a Name and valid http/https URL.");return}setBusy(true);setError("");setMessage("");try{const r=await fetch(`${API}/api/v1/qr-bulk`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({template_id:selected,items:validRows})});const body=await r.json().catch(()=>null) as {created?:Created[];detail?:string}|null;if(!r.ok)throw new Error(body?.detail||"Bulk creation failed.");setCreated(body?.created||[]);setMessage(`${body?.created?.length||0} QR codes created with ${template?.name||"the selected template"}. Each QR has its own analytics.`)}catch(e){setError(e instanceof Error?e.message:"Bulk creation failed.")}finally{setBusy(false)}}
   return <main className="qrfy-page qr-route-enter"><QrProductNav/>
     <header className="qrfy-page-header"><div><p className="qrfy-kicker">High-volume QR workflow</p><h1>Bulk QR Generator</h1><p>Choose one saved template, then enter only Name + URL. Every generated QR keeps independent tracking and per-QR analytics.</p></div><Link className="qrfy-button ghost" href="/qr/templates">Manage Templates</Link></header>
