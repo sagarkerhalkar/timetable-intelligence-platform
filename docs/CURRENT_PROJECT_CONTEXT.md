@@ -49,7 +49,7 @@ Device Intelligence:
 - unsupported optional fields must never block scanning;
 - compact summaries in UI, deep technical telemetry expandable.
 
-## v1.0.24 release candidate
+## v1.0.24 feature set
 
 Adds server-side reusable templates and Bulk Create.
 
@@ -66,6 +66,19 @@ Bulk Create:
 - up to 500 rows per request;
 - every QR gets a unique ID + slug and independent analytics;
 - deleting a template never deletes already-created QR campaigns.
+
+## v1.0.24.1 strict TypeScript correction
+
+The first real v1.0.24 Windows run passed 105/105 backend tests and 16/16 web regression tests, then stopped at four TS2532 errors in the new Bulk Generator parser.
+
+Root cause: the repository enables `strict` and `noUncheckedIndexedAccess`, but the pre-package v1.0.24 frontend validation was weaker than the real Windows `tsc --noEmit` gate. Indexed values such as `tab[0]`, `comma[0]`, `match[1]` and `match[2]` were therefore still considered possibly undefined.
+
+v1.0.24.1:
+- moves bulk row parsing into `apps/web/lib/qr-bulk.ts`;
+- adds explicit nullish fallbacks before indexed values are used;
+- adds `qr-bulk.test.ts` for spreadsheet-tab, CSV, `Name URL`, and malformed-row parsing;
+- requires semantic TypeScript validation with both `strict=true` and `noUncheckedIndexedAccess=true` before future packaging;
+- changes no QR template, analytics, Wi-Fi, identity, timetable, Test Monitor or Sheet Updates product behavior.
 
 ## Repository safety
 
