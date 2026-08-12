@@ -5,44 +5,42 @@ Google Sheets-driven timetable, content search, sheet-update tracking, Test Moni
 ## Stable vs release candidate
 
 - Stable working branch: `v1`
-- Current release-candidate branch: `v1.0.24-qr-templates-bulk-analytics`
-- Current package correction: **v1.0.24.1 strict TypeScript fix**
+- Release-candidate branch: `v1.0.24-qr-templates-bulk-analytics`
+- Current package: **v1.0.25 Paged UX + Larger QR Library**
 - Do **not** treat the release-candidate branch as production until its Windows installer completes the full regression/typecheck/build/runtime gate without rollback.
 
-## QR Studio release candidate
-
-Main QR workflow:
+## Current QR workflow
 
 `New QR -> Templates -> Bulk Create -> My QR Codes -> Analytics`
 
-The v1.0.24 feature set adds:
+v1.0.24 introduced reusable server-side templates, bulk Name + URL creation, and independent per-QR analytics.
 
-- multiple server-side reusable QR templates;
-- template design reuse: logo, full-screen image, colors, dots/markers, frame, scan screen, animation, tracking and identity settings;
-- Bulk Create using only `Name + URL` rows after choosing a template;
-- manual rows, pasted spreadsheet/CSV data, and CSV/TXT upload;
-- up to 500 QRs per request;
-- independent ID, slug, destination and analytics for every generated QR;
-- per-QR analytics links from Bulk results and My QR Codes;
-- template provenance without coupling old QRs to future template edits;
-- template deletion preserves already-created QR campaigns;
-- shared uploaded assets remain protected while referenced by another QR/template.
+v1.0.24.1 corrected the Bulk parser for the project's real `strict` + `noUncheckedIndexedAccess` TypeScript contract.
 
-## v1.0.24.1 correction
+v1.0.25 is a focused UI release:
+- shared pagination for long QR collections;
+- My QR Codes: 8 larger QR cards/page;
+- actual QR preview on every card plus large `Show QR` modal;
+- Copy Source Link and Copy QR Link with LAN/older-browser fallback;
+- checkbox selection across pages and `Delete Selected`;
+- Templates: 6/page;
+- Bulk template chooser: 6/page;
+- Bulk input rows: 10/page;
+- Bulk generated results: 10/page;
+- Device Intelligence: 6 devices/page;
+- Recent Scan History: 15 rows/page.
 
-The first real Windows v1.0.24 run passed **105/105 backend tests** and **16/16 web regression tests**, then `tsc --noEmit` found four TS2532 errors in the new Bulk Generator parser. The project uses both `strict` and `noUncheckedIndexedAccess`, while the pre-package check had only done a weaker transpile/syntax validation.
+No tracking, analytics, Wi-Fi, identity, template or timetable semantics are changed by v1.0.25.
 
-v1.0.24.1 moves row parsing into a typed `qr-bulk.ts` helper, uses explicit nullish fallbacks for indexed values, and adds permanent parser regression tests. Future TypeScript release checks must use semantic strict TypeScript with `noUncheckedIndexedAccess` before packaging.
+## Continuation docs
 
-## Architecture and continuation docs
-
-Read these first in a new chat or development session:
+Read these first in a new chat/development session:
 
 1. `docs/CURRENT_PROJECT_CONTEXT.md`
 2. `docs/QR_PLATFORM_ARCHITECTURE.md`
 3. `docs/V1_0_24_QR_TEMPLATES_BULK_ANALYTICS.md`
 4. `docs/V1_0_24_1_STRICT_TYPESCRIPT_FIX.md`
-5. `reports/VALIDATION_V1_0_24_1.md`
-6. `release-source/v1.0.24.1/README.md`
+5. `docs/V1_0_25_PAGINATION_QR_LIBRARY.md`
+6. `reports/VALIDATION_V1_0_25.md`
 
 The public repository intentionally excludes databases, credentials, recipient data, private Sheet contents, runtime logs, cookies/tokens and uploaded customer assets.
