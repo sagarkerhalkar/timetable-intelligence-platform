@@ -21,6 +21,22 @@ Parser rules:
 - Public QR host: `https://nexttoppers.sagarkerhalkar.com`
 - Port 3457 is protected and must not be touched.
 
+### CRITICAL database rule after 2026-08-13 incident
+
+The authoritative application/core SQLite DB is:
+
+`D:\timetable-intelligence-platform\services\api\data\timetable.db`
+
+`DATABASE_URL` historically defaults to the relative value `sqlite:///./data/timetable.db`, so changing Uvicorn's working directory can silently switch the entire application to another DB. A recovery from another chat started Uvicorn from the project root, making `D:\timetable-intelligence-platform\data\timetable.db` active. That made recovered QR records visible but bypassed/diverged from the timetable/Google Sheet core DB.
+
+Permanent rule:
+- never recover QR by running the whole API against the root `data\timetable.db`;
+- if QR data exists in another DB, merge only `qr_templates`, `qr_codes`, `qr_scans` and missing `qr_assets` into the authoritative service/API DB;
+- never replace timetable/source/change/test/content/notification core tables from a QR recovery DB;
+- pin `DATABASE_URL` to the absolute service/API DB path during recovery so a different working directory cannot switch databases again.
+
+See `docs/INCIDENT_2026_08_13_DATABASE_WORKDIR_RECOVERY.md` and `recovery/2026-08-13-core-db-repair/`.
+
 ## Important timetable logic
 - India civil Monday–Sunday week boundaries; never use UTC weekday math for India civil dates.
 - Today cards open exact date + stream.
@@ -62,6 +78,7 @@ A future chat/developer must be able to continue from GitHub without depending o
 
 The 2026-08-13 handoff-repair evidence is recorded in:
 - `engineering-log/2026-08-13-v1.0.25-handoff-and-runtime-recovery.md`
+- `docs/INCIDENT_2026_08_13_DATABASE_WORKDIR_RECOVERY.md`
 
 ## GitHub v1.0.24 handoff
 
@@ -79,3 +96,7 @@ The first v1.0.24 Windows run proved 105/105 backend tests and 16/16 web tests, 
 ## v1.0.25 UI policy
 
 The QR product now follows the same no-endless-page rule used elsewhere. My QR Codes, Templates, Bulk input/results, Device Intelligence and Recent Scan History use a shared page system. My QR Codes uses large responsive cards with actual QR previews, Copy Source Link, Copy QR Link, Show QR, checkbox multi-select and Delete Selected. Multi-delete reuses the existing QR delete endpoint so shared template/logo/background asset reference protection remains unchanged.
+
+## Current recovery state — 2026-08-13
+
+Do not install another QR/UI release yet. First restore the authoritative service/API DB runtime, merge QR-only data from the root DB, force-sync the four trusted timetable Sheets, and prove Today/Weekly/Test Monitor/Sheet Updates/QR together. Only after that should PR #12 or any later release be considered for Windows acceptance.
