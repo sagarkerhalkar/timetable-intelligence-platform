@@ -69,9 +69,14 @@ Locked target scale:
 - all QR list/search/filter/sort/pagination must be server-side and index-backed;
 - prefer cursor/keyset pagination for very large QR and scan datasets; do not use deep client-side pagination over all records;
 - My QR Codes default view must be compact and information-dense, with optional card/table modes and on-demand detail drawers/modals instead of huge always-expanded cards;
+- each QR row/card must provide an immediate **Copy Source Link** action that copies the original destination/source URL;
+- each QR row/card must provide an immediate **Open QR / Show QR** action that can reopen the QR preview at any time without entering edit mode;
+- the QR preview must support opening the public tracked QR link and downloading the QR image/PDF using the existing supported formats/actions;
+- source link, public QR link, status and key analytics summary should be available from a compact quick-actions area without expanding the whole record;
 - provide fast search by QR name, slug/link, type, status, template, date range and relevant tags/metadata;
 - bulk selection must work across filtered result sets without loading every QR into the browser;
 - Analytics must become a full dashboard rather than a small page: global totals, verified scans, unique devices/browsers without falsely calling them unique humans, trend charts, top QR codes, top source/channel, countries/regions, device/browser/OS, time/date filters, comparison periods and per-QR drill-down;
+- Analytics must provide both a global portfolio view and a one-click per-QR detail view from My QR Codes;
 - recent/raw scan tables must use server-side pagination/virtualization and never render millions of events at once;
 - heavy analytics must use pre-aggregated/summary data and asynchronous/background aggregation rather than scanning all raw events on every page load;
 - data retention/archival strategy must be configurable so long-term raw analytics can scale without making the live UI slow;
