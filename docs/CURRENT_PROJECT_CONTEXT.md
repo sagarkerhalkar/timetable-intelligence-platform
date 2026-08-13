@@ -52,6 +52,17 @@ Stable source branch: `v1`.
 Public repository must never contain databases, credentials, recipient lists, private Sheet data, runtime logs, cookies or tokens.
 Release candidates should go to a separate branch/PR until Windows acceptance succeeds.
 
+### Mandatory engineering handoff
+
+`docs/GITHUB_MANDATORY_HANDOFF_POLICY.md` is mandatory for every future development session.
+
+Before a development session is considered complete, GitHub must contain the engineering-relevant requirements, decisions, changed source, validation commands/results, every meaningful FAIL, root cause, fix, PASS evidence, package/checksum state, Windows installer/rollback status, unresolved blockers and exact next action. Chronological evidence goes under `engineering-log/`.
+
+A future chat/developer must be able to continue from GitHub without depending on an inaccessible prior chat. Sensitive/private data remain excluded because the repository is public.
+
+The 2026-08-13 handoff-repair evidence is recorded in:
+- `engineering-log/2026-08-13-v1.0.25-handoff-and-runtime-recovery.md`
+
 ## GitHub v1.0.24 handoff
 
 - Repository: `sagarkerhalkar/timetable-intelligence-platform`
