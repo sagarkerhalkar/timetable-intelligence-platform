@@ -59,6 +59,28 @@ See `docs/INCIDENT_2026_08_13_DATABASE_WORKDIR_RECOVERY.md` and `recovery/2026-0
 - Template deletion must not delete existing generated QR codes.
 - Template/shared image assets must not be removed while another QR/template still references them.
 
+## QR scale requirement — next major release
+
+The current QR list is too bulky and the Analytics page is too small/simple for the intended production scale.
+
+Locked target scale:
+- support lakhs of QR codes without endless pages or browser-side loading of the full dataset;
+- support approximately 100 lakh / 10,000,000 QR accesses/scans and the resulting analytics data;
+- all QR list/search/filter/sort/pagination must be server-side and index-backed;
+- prefer cursor/keyset pagination for very large QR and scan datasets; do not use deep client-side pagination over all records;
+- My QR Codes default view must be compact and information-dense, with optional card/table modes and on-demand detail drawers/modals instead of huge always-expanded cards;
+- provide fast search by QR name, slug/link, type, status, template, date range and relevant tags/metadata;
+- bulk selection must work across filtered result sets without loading every QR into the browser;
+- Analytics must become a full dashboard rather than a small page: global totals, verified scans, unique devices/browsers without falsely calling them unique humans, trend charts, top QR codes, top source/channel, countries/regions, device/browser/OS, time/date filters, comparison periods and per-QR drill-down;
+- recent/raw scan tables must use server-side pagination/virtualization and never render millions of events at once;
+- heavy analytics must use pre-aggregated/summary data and asynchronous/background aggregation rather than scanning all raw events on every page load;
+- data retention/archival strategy must be configurable so long-term raw analytics can scale without making the live UI slow;
+- exports of large analytics/QR result sets should be generated asynchronously rather than blocking the UI;
+- QR redirect/scan path must stay fast even when analytics storage is under heavy load;
+- the QR scan endpoint must fail safely: analytics processing must never delay or break the actual redirect/content experience;
+- architecture must be designed for horizontal growth beyond the current local SQLite proof/runtime. SQLite may remain for local proof/dev, but the production scale design must allow a server-grade database/analytics store before claiming readiness for 10 million accesses;
+- no regression to existing QR identity, verified-scan, anti-bot, template, bulk, analytics, design, lifecycle or shared-asset protections.
+
 ## Release history lesson
 Do not weaken tests to make a release pass. When display/API contracts change, update all cumulative regressions. Windows runtime validation is authoritative; local/static checks are not enough to claim release success.
 
