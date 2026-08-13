@@ -30,9 +30,17 @@ Every engineering-relevant part of the session must be recorded, including:
 
 ## Chat-to-GitHub rule
 
-The engineering meaning of development chat must be transferred into repository documentation. This does not require a verbatim transcript when prose can preserve the same technical meaning, but no requirement, failure, fix, PASS/FAIL evidence or unresolved engineering decision may exist only in chat.
+All engineering chat for this project is part of the handoff record. Requirements, changes, errors, failures, successes, fixes, validation results, user corrections, process complaints that affect development, and unresolved decisions must be written to GitHub during the same development session.
 
-When the user explicitly says a detail must be preserved verbatim, keep that wording in the relevant requirement/session log unless it contains sensitive information.
+A future chat must not need the previous ChatGPT conversation to know what was requested, what failed, what was fixed, what passed, what code/package exists, and what must happen next.
+
+A concise technical record may replace repetitive conversational wording, but no engineering meaning may exist only in chat. When the user explicitly requires wording to be preserved, retain it in the chronological engineering log unless it contains sensitive/private information.
+
+## Delivery-priority rule
+
+GitHub handoff work must **not delay delivery of working code/package** for hours. When a usable release candidate or installer is ready, provide it to the user immediately and update GitHub in the same turn/session. Do not spend a long session only repairing documentation while withholding the code artifact.
+
+For long development sessions, update GitHub incrementally after meaningful milestones/failures so the final handoff is small and does not become a separate multi-hour task.
 
 ## Required repository locations
 
@@ -88,4 +96,4 @@ Current runtime protections remain authoritative unless explicitly changed and r
 
 ## Purpose of this policy
 
-This rule exists specifically to prevent a repeat of the v1.0.25 handoff gap where documentation existed in GitHub but some exact Windows runtime page source was not committed, forcing a later session to collect source again from the installed machine.
+This rule exists specifically to prevent a repeat of the v1.0.25 handoff gap where documentation existed in GitHub but some exact Windows runtime page source was not committed, forcing a later session to collect source again from the installed machine, and to prevent GitHub bookkeeping from delaying delivery of the actual code package to the user.
