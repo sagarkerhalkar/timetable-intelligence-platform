@@ -42,6 +42,24 @@ GitHub handoff work must **not delay delivery of working code/package** for hour
 
 For long development sessions, update GitHub incrementally after meaningful milestones/failures so the final handoff is small and does not become a separate multi-hour task.
 
+## Mandatory production-database safety rule
+
+Before any Windows release installer changes source, runs migrations against production, stops/restarts the API, or performs runtime QR lifecycle checks, it must protect the active production SQLite database.
+
+Every installer must:
+
+1. Resolve the exact active production DB path used by the running API.
+2. Record the DB path, file size, modified time and SHA-256 in the release log.
+3. Open the DB read-only and record critical counts including `qr_codes`, `qr_scans`, `qr_templates`, and `sources` when those tables exist.
+4. Create a safe backup of the active DB before changing source/services. Include SQLite WAL/SHM state when applicable or use SQLite's consistent backup mechanism.
+5. Never run destructive/migration functional tests against the production DB; test suites must use isolated temporary/test databases.
+6. After restart, verify that the API is using the intended DB path and verify critical counts against the pre-update snapshot.
+7. Treat DB path/count/hash mismatch as a blocking release failure and rollback/recover before any further feature work.
+8. Retain the database backup until post-acceptance confirmation.
+9. Never delete or overwrite a suspected historical DB during recovery. Recovery starts with read-only discovery.
+
+This rule was added after the 2026-08-13 v1.0.25.1 incident where source rollback succeeded but the user reported the QR library empty after API restart and the installer was found not to have backed up the production database.
+
 ## Required repository locations
 
 - `docs/CURRENT_PROJECT_CONTEXT.md` — current authoritative product/runtime state.
@@ -96,4 +114,4 @@ Current runtime protections remain authoritative unless explicitly changed and r
 
 ## Purpose of this policy
 
-This rule exists specifically to prevent a repeat of the v1.0.25 handoff gap where documentation existed in GitHub but some exact Windows runtime page source was not committed, forcing a later session to collect source again from the installed machine, and to prevent GitHub bookkeeping from delaying delivery of the actual code package to the user.
+This rule exists specifically to prevent a repeat of the v1.0.25 handoff gap where documentation existed in GitHub but some exact Windows runtime page source was not committed, forcing a later session to collect source again from the installed machine, to prevent GitHub bookkeeping from delaying delivery of the actual code package, and to prevent any future release from proceeding without explicit production-database protection and identity/count verification.
