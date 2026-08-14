@@ -1,0 +1,11 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "q",
+  "main": "src/index.js",
+  "compatibility_date": "2026-08-14",
+  "workers_dev": true,
+  "preview_urls": false,
+  "vars": {
+    "API_BASE": "https://nexttoppers.sagarkerhalkar.com/backend"
+  }
+}
