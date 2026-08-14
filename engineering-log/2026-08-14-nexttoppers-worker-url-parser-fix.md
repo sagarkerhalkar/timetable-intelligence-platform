@@ -31,6 +31,21 @@ Do not redeploy or guess the Worker URL again. Use the user-confirmed live Worke
 
 The corrective package v1.0.27.1 bypasses deployment-output parsing, verifies the supplied Worker URL from the Windows host, then invokes the existing guarded public-base updater with that exact URL. The updater keeps old printed QR routes compatible and changes only NEW tracked QR generation after tests/build pass.
 
+## Corrective package
+
+File: `NEXTTOPPERS_QR_EXACT_WORKER_URL_FIX_V1_0_27_1.zip`
+
+SHA-256: `b713955a08fd8f7ef667128bdb5c5e5de981bc9d2e9b23ea44f817b2a278745d`
+
+Local package validation:
+
+- ZIP CRC: PASS
+- exact public base embedded: `https://q.nexttoppers.workers.dev`
+- Wrangler redeploy/parsing removed from this corrective package
+- guarded DB/source/test/build updater retained
+
+Real Windows acceptance is still pending.
+
 ## Acceptance
 
 After v1.0.27.1 succeeds, create one completely new tracked QR. Its public/encoded URL must begin with:
