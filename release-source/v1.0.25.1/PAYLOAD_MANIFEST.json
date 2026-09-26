@@ -1,0 +1,14 @@
+{
+  "version": "1.0.25.1",
+  "files": [
+    {"path":"apps/web/app/globals.v1.0.25.append.css","size":9293,"sha256":"cc114c7670cc6c1f3f57abd250b3cd5bdb897876ada665addf331f225717ea4e"},
+    {"path":"apps/web/app/qr/bulk/page.tsx","size":11457,"sha256":"9b046a2dc3676848612fc3e20d652aff12b325a2b300fe93c73cfcdd222b460d"},
+    {"path":"apps/web/app/qr/codes/page.tsx","size":22195,"sha256":"6ebd0bad54f08df3b9276be40479c4719fd1798aa3667037411c9817ae4cedfc"},
+    {"path":"apps/web/app/qr/stats/page.tsx","size":27977,"sha256":"0b1056a0a9daa3a2158cb315db76df75ea62d57403b7a58b53cd2ea108aa0220"},
+    {"path":"apps/web/app/qr/templates/page.tsx","size":7082,"sha256":"aab7faf437e7c272a7e49f55380cdf835528d337100cb66ed6c1d3d4cc5e2837"},
+    {"path":"apps/web/components/pagination-controls.tsx","size":1421,"sha256":"84d17318ccd67dc2466a98938e8cb9b96433f2bce65d48878ae2e138c28d22b8"},
+    {"path":"apps/web/lib/pagination.test.ts","size":902,"sha256":"5f619f46fa90563ff6fdcac26e234d8473fe24b319092e9cffeaae0257756b93"},
+    {"path":"apps/web/lib/pagination.ts","size":1481,"sha256":"ba2294dd257bbbb1fbad5c820fca67336bf6a23654414d195049622e5fcd10ce"}
+  ],
+  "installer_fix": "Windows PowerShell 5.1 ASCII-only parser fix; payload UI unchanged from v1.0.25"
+}
