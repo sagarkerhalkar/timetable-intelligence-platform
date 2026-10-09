@@ -258,3 +258,20 @@ All other original package files are untouched; added only help documentation an
 **Next user action:** extract the new ZIP to a fresh Downloads folder; SKIP `1_INSTALL_SOURCE.cmd` because source is already installed; execute only `2_BUILD_SAFELY.cmd`, which runs syntax gate, QR count vs root database identity check, consistent backup, strict TypeScript and staging `next build --webpack`. Do NOT run Step 3 until `STAGED BUILD PASSED` and process supervision/cutover have been reviewed. If the Webpack build itself fails, preserve the exact error message and don't repeatedly install source or change databases.
 
 **Remaining high-risk task:** Carefully review actual API/web supervisor and restart mechanism before executing `-GoLive`. Older script force-stops processes; do not assume automatic cutover is safe even after the staging build passes.
+
+
+## 2026-10-09 — Real Windows staging build PASS (reported by user)
+
+User reran STEP 2 from WEBPACK_BUILD_FIXED ZIP.
+- Windows PowerShell syntax verification PASS.
+- API QR count matched selected root data DB: 50 vs 50; raw scan count previously measured as 1,722.
+- Consistent SQLite snapshot backup PASS.
+- `npm run typecheck` with `tsc --noEmit` PASS.
+- Next.js 16.2.12 `next build --webpack` compiled successfully (4.7 s), completed TypeScript, produced all 18/18 pages.
+- Next build route list includes `/qr/reports`.
+- STAGED BUILD PASSED at `D:\timetable-intelligence-platform\backups\qr_compact_go_live_20261009-161907\web-staged\.next`.
+- No intentional API/web restart, no live `.next` swap. All historical QR data retained.
+
+**Next acceptance gate**: physical Windows production activation to 3550+3500 remains PENDING. WARNING: the package `3_ACTIVATE_MAIN_APP.cmd` executes `PREPARE_AND_ACTIVATE.ps1 -GoLive`, which **runs a new staging backup and build again, then forcibly stops the identified API and web processes and replaces them with newly launched processes**. The API stop/start portion does not automatically restore the previous API process if startup or new report endpoint health check fails. Therefore do NOT describe this as risk-free or as an already tested go-live. Review which supervisor/task launches both live processes and establish explicit manual recovery path before running it during a maintenance window. Backend `app.config` loads project root .env files and falls back to cwd-relative DB path; ensure the new process pins the verified root 50-QR DB and retains required notification/service configuration. Validate API health, QR count, scan counts, old printed QR, main dashboard, timetable, sources/test monitor, /qr/reports and PDF/CSV after cutover.
+
+The full original working-source ZIP and candidate patch were delivered in chat; GitHub main still contains only standalone reporting tools and continuation documents, not a complete accepted Windows web/API release.
