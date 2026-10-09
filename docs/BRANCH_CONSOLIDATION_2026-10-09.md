@@ -92,3 +92,20 @@ For report-only download, follow main README. For complete app update, use an is
 - Maintain auth/admin boundaries; never expose raw scan PII publicly.
 - QR confirmed scan count is **not** app downloads. District is Unknown when not provided by trusted geo data.
 - Historical branches remain until all unique validated work is represented in main and a lossless recovery point exists.
+
+
+## Live Windows machine diagnostic supplied 2026-10-09 (direct user-provided PowerShell result)
+
+On the actual server, the user ran:
+- cd D:\timetable-intelligence-platform — succeeded
+- git status --short, git remote -v, git branch --show-current — all failed with "fatal: not a git repository (or any of the parent directories): .git"
+- Test-Path "D:\timetable-intelligence-platform\services\api\data\timetable.db" — True
+- Get-NetTCPConnection -LocalPort 3550 -State Listen — found 0.0.0.0:3550 LISTEN
+
+Interpretation:
+1. The live application directory has no Git metadata, so a normal Git pull in that directory CANNOT update it.
+2. The expected SQLite database exists, but that fact does not confirm the live API is using it.
+3. The API listener exists, but service health, live process startup path and source revision are not yet verified.
+4. DO NOT run git init/clone/reset/checkout/pull or release ZIP in the live directory to silence the error. Do not publish the live application directory unreviewed to this public repository.
+5. Next minimal read-only diagnostic: identify the process bound to 3550, check GET /api/v1/health, inspect source directory structure, confirm active DB configuration privately without exposing credentials.
+6. Then assemble a sanitized complete source tree and isolated staging build for a true main-branch release; existing QR Worker/KV and protected 3457 must stay unchanged.
