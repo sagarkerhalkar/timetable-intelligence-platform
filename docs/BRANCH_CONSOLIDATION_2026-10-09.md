@@ -303,3 +303,24 @@ Windows ZIP:
 **Production status:** NOT LIVE or verified. Run step 1 then step 2 from new ZIP (not any previous ZIP). After `STAGED BUILD PASSED`, review Windows API/web startup supervisor and perform a controlled production cutover separately, keeping root 50+ QR DB pinned. Do NOT run an old Step 3 from earlier ZIP blindly because it can forcibly stop the API without full rollback. After cutover verify browser `/qr/reports`, CSV headers, PDF, original printed QR redirects, new QRs, API count, scans and all timetable functions.
 
 GitHub: This handoff document is updated; the entire new runtime source remains shipped in the conversation ZIP, **not merged** into full application GitHub main. User's one-main-branch consolidation remains pending.
+
+
+## 2026-10-09 — Latest Geo+Device Windows Step 1 navigation-anchor defect repaired
+
+**Actual user Windows results:**
+1) `1_APPLY_GEO_DEVICE.cmd` failed with `STOP: QR navigation does not have Geo & Stores; previous source installation appears missing`. No source changes or service restarts from that failed step.
+2) User nonetheless ran `2_BUILD_SAFELY.cmd`, which passed Windows PowerShell parser and `next build --webpack`, producing `STAGED BUILD PASSED` at `D:\\timetable-intelligence-platform\\backups\\qr_compact_go_live_20261009-170425\\web-staged\\.next`. **This build is NOT proof the new Geo+Devices code was installed**, because Step 1 previously failed.
+3) Same user log confirms API/root DB QR count=50/50, raw scans=1787, consistent DB snapshot PASS, neither live service restarted.
+
+**Root cause:** original 2026-10-09 Geo-device installer asserted that `apps/web/components/qr-product-nav.tsx` must already contain the literal `Geo & Stores` or `Geo & Devices`. The earlier working source ZIP actually contains only five original QR tab definitions, ending at `/qr/stats`, with no `/qr/reports` entry. An earlier report source may have been partially installed without installing both nav labels. The old Step 2 only checked for existence of report source files, allowing compilation of stale source.
+
+**Fixed source-only ZIP delivered in conversation:**
+`NextToppers_QR_Geo_Device_STEP1_And_Build_FIXED_2026-10-09.zip`
+SHA256 `fb11397f1bf4e170dc66618950c6a73d9b1242ae45c9ade20c8e73b433cc7a88`, 14 entries, ZIP integrity PASS.
+
+**What actually changed in release:**
+- `INSTALL_GEO_DEVICE.py`: a guarded, idempotent nav normalizer that either **adds** the missing `/qr/reports` entry after `/qr/stats` or **renames** a present prior store label to Geo & Device Analytics / Geo & Devices. Preserves old QR nav entries and existing redirect source, refuses duplicate reports entries or unknown shapes. Works against both exact baseline navigation files read from user's original working-source ZIP. Maintains root DB vs API QR count guard (not fixed 50), consistent backup, hash-tracked source-only rollback.
+- `PREPARE_AND_ACTIVATE.ps1`: Step 2 **now compares SHA256 of installed qr_reports.py, page.tsx and reports.css to the exact packaged files**, checks main sidebar and QR menu labels and report API registration in main.py BEFORE any stage backup or build. If Step 1 failed, Stage 2 now STOPS with GEO + DEVICES SOURCE NOT INSTALLED rather than building the stale site and reporting a false successful installation. Build still uses confirmed Windows `next build --webpack`; this package does not support `-GoLive` or Stop-Process.
+- Included 11 new regression checks alongside previous tests; 23/23 Python tests PASS, plus TypeScript/TSX transpile syntax diagnostics zero, new ZIP integrity PASS. Full Windows strict TypeScript and Webpack build of this specific fixed release remain unverified until user's next run. No live deployment or restarts performed by ChatGPT.
+
+**User action:** extract into a fresh Downloads folder, run the new `1_APPLY_GEO_DEVICE.cmd` and approve, then run the new `2_BUILD_SAFELY.cmd`. Require **SOURCE CHECK PASS** before **STAGED BUILD PASSED**. The old 170425 staging build was against the wrong source and should NOT be used for cutover. Never use earlier 3_ACTIVATE_MAIN_APP.cmd with unconditional process termination. Main site cutover and end-to-end acceptance still pending.
