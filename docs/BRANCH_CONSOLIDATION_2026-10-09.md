@@ -121,3 +121,32 @@ Interpretation:
 - These facts prove a live app is listening and its two source trees exist, not that the root app is safe for git pull or that running source equals the historical version string.
 - Added tools/local-source-audit/prepare_source_review.py to main. It ONLY reads an explicit whitelist of source-code paths, excludes common sensitive/runtime files and suspicious secret patterns, and creates a separate offline ZIP with a manifest. It does not deploy or upload. **Automated secret filtering is not a guarantee. Review archive before private upload or any public commit.**
 - Next required input: protected source-only archive privately provided for code reconciliation; compare actual source with nexttoppersqr and all divergent commits, run tests/staging; then replace main with verified whole working source and archive old branches/tags. No production changes until gates pass.
+
+
+## 2026-10-09 actual-source QR analytics feature patch
+
+The user uploaded a sanitized source archive from the running (non-Git) Windows installation, named NextToppers-Working-Source-Review-20261009-142102.zip. The archive held services/api/app/{main.py,api/qr_fast.py,api/qr_scale.py,api/routes.py,database.py}, apps/web/app/qr/stats/page.tsx, qr-product-nav.tsx, web lockfiles and tests. Source inspection confirmed version 1.0.24.1, API 3550/web 3500, and a QR fast scan path already persisting country/device/browser/OS plus region/city edge telemetry.
+
+**Delivered tested local source patch ZIP:** NextToppers_QR_Analytics_Working_Source_Patch_FLAT_2026-10-09.zip
+
+SHA256: be4f8631d549d72387c693d3c2fb97b043f90fdfc404b37cb62b91a4bd9bb1f0
+
+This ZIP was generated as a conversation download artifact; it is NOT on GitHub yet. Do not claim GitHub main includes this feature source or claim production has been modified.
+
+Additive patch:
+- NEW services/api/app/api/qr_reports.py: /api/v1/qr-reports/{summary,export.csv,export.pdf}, verified non-bot event aggregation, country/state/city/district (unknown where missing), anonymized per-browser/QR scan counts and device types, Play/App Store QR traffic separate from installs.
+- NEW apps/web/app/qr/reports/{page.tsx,reports.css}: Geo + Stores dashboard with QR selector/period filter and CSV/PDF exports.
+- NEW services/api/scripts/import_store_metrics.py: explicit, locally verified normalized publisher figures to a separate SQLite database. No QR-specific installs inferred from clicks.
+- Additive edits applied by INSTALL_WINDOWS.py to services/api/app/main.py, apps/web/components/qr-product-nav.tsx, apps/web/app/qr/stats/page.tsx.
+- ROLLBACK_WINDOWS.py restores original source files if unchanged by others. Both scripts are in the packaged ZIP.
+
+Tests:
+- 3/3 FastAPI backend synthetic tests passed (counts, geo Unknown, anonymous repeat browser clicks, PDF/CSV, separate store metric DB).
+- TSX syntactic transpilation: 0 errors; full Next strict typecheck/build NOT run (project node_modules not in uploaded ZIP).
+- Source installer dry-run, apply with separate synthetic DB + SQLite consistent backup, and rollback passed on isolated uploaded-source copies.
+- Sample PDF rendered and visually inspected; ZIP passed unzip integrity check.
+- Real production install, process restart and full acceptance: NOT PERFORMED.
+
+**Next immediate action:** User privately downloads the released patch, first runs dry-run on the working Windows source, verifies exact active DATABASE_URL (historical two-DB incident), then runs --apply only after confirming active DB. A controlled staged Next build + API/web restart is still necessary to make the new screen appear. Test all old QR redirect URLs and timetable functionality before marking accepted. No Cloudflare Worker/KV deployment needed.
+
+Branch consolidation remains blocked until sanitized live source is reconciled and production acceptance passes. No branches were deleted/merged in this patch session.
