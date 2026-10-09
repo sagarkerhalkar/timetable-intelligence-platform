@@ -177,3 +177,25 @@ Main page expected after successful physical Windows cutover: `http://156.156.40
 **Next action:** User extracts ZIP outside production folder; run 1_INSTALL_SOURCE.cmd, 2_BUILD_SAFELY.cmd and only after staging succeeds 3_ACTIVATE_MAIN_APP.cmd during approved maintenance window; provide run output for QA. If service-manager checks fail, use existing supervisor restart procedure instead of forcibly killing processes. Verify same QR counts, Today/Weekly/Test Monitor/Sheets and a printed QR scan after cutover.
 
 **GitHub current status:** this Markdown handoff was updated; the new frontend source was delivered in ZIP and is **NOT** committed to GitHub main. Earlier branches remain unmerged; do not claim one-branch consolidation is complete. No production services or DB were changed by ChatGPT.
+
+## 2026-10-09 QR count-gate bug fix (Windows report build)
+
+User attempted 2_BUILD_SAFELY.cmd for the compact Geo & Store Analytics main-web update and received:
+`STOP: Live API reports only 1 QR codes: stopping to protect data`.
+The script had used `$codes = @(Get-Json 'http://127.0.0.1:3550/api/v1/qr-codes')` and `$codes.Count` which can count the PowerShell JSON array wrapper rather than the contained QR records. The backend endpoint returns QR records; the main app screenshot and root database had previously shown 50 QR records and 1615 raw scan rows. This failure happened BEFORE staging build and before any process restart.
+
+**Patch:** `NextToppers_QR_Compact_Main_Web_FIXED_QR_Count_2026-10-09.zip`
+**SHA256:** `24f2ab27b30ff0a8ff05605f201aeb15e7dd60c08cd05e6eb4abc9f565d3affc`
+**Status:** Delivered as ZIP in chat. NOT COMMITTED AS FULL PRODUCTION SOURCE. User must extract fresh ZIP and run **2_BUILD_SAFELY.cmd only** if Step 1 source was already installed. Do not reinstall previous source patch.
+
+Repaired `PREPARE_AND_ACTIVATE.ps1`:
+- Uses `GET /api/v1/qr-scale/codes?limit=10&active=all` and its scalar `.total` rather than `@(Get-Json /api/v1/qr-codes).Count`.
+- Keeps root DB identity check and historical scan count guard; does not hardcode 50, so creates new QR codes without modifying script.
+- Replaces the flawed post-restart and final QR counts, avoiding identical false stops after building.
+- Improved `2_BUILD_SAFELY.cmd` outcome handling; failure does not pretend build passed.
+- Existing QR redirect / edge Worker / KV / application database untouched.
+- Test results: 4 static/dynamic safety-gate source tests PASS, 4 synthetic installer tests PASS, 3 Python/FastAPI synthetic report tests PASS (with isolated PYTHONPATH setup), ZIP integrity PASS.
+- Neither this PowerShell script nor the web build was executed on the physical Windows server, and no live restart is claimed.
+- Stage first, confirm `STAGED BUILD PASSED`, then review process supervisor and run controlled restart only with appropriate acceptance.
+
+Potential remaining caveats: The auto cutover still requires a stable matched launcher for Python+Node and an approved maintenance window; STOP means do not bypass guards. Full Windows go-live not yet accepted.
