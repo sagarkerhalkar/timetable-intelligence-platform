@@ -109,3 +109,15 @@ Interpretation:
 4. DO NOT run git init/clone/reset/checkout/pull or release ZIP in the live directory to silence the error. Do not publish the live application directory unreviewed to this public repository.
 5. Next minimal read-only diagnostic: identify the process bound to 3550, check GET /api/v1/health, inspect source directory structure, confirm active DB configuration privately without exposing credentials.
 6. Then assemble a sanitized complete source tree and isolated staging build for a true main-branch release; existing QR Worker/KV and protected 3457 must stay unchanged.
+
+
+## Second live Windows diagnostic (confirmed from user, 9 October 2026)
+
+- API port 3550 PID 21028, executable C:\Users\Pc\AppData\Local\Python\pythoncore-3.14-64\python.exe; listener 0.0.0.0.
+- GET http://127.0.0.1:3550/api/v1/health returned status=ok, service=Timetable Intelligence API, version=1.0.24.1, environment=production, timestamp=2026-10-09T08:45:27.056079+00:00.
+- Web port 3500 listening at 0.0.0.0 PID 19064.
+- Windows app is a non-Git runtime tree with services/api/app, services/api/tests, pyproject.toml, apps/web/app, apps/web/components, apps/web/lib, package.json, package-lock.json, .next, node_modules. Has local .github, github-source, payload, .wrangler, recovery folders and many backups.
+- Existing authoritative candidate DB file in services/api/data exists but the API connection's DATABASE_URL has NOT been established (no file disclosure).
+- These facts prove a live app is listening and its two source trees exist, not that the root app is safe for git pull or that running source equals the historical version string.
+- Added tools/local-source-audit/prepare_source_review.py to main. It ONLY reads an explicit whitelist of source-code paths, excludes common sensitive/runtime files and suspicious secret patterns, and creates a separate offline ZIP with a manifest. It does not deploy or upload. **Automated secret filtering is not a guarantee. Review archive before private upload or any public commit.**
+- Next required input: protected source-only archive privately provided for code reconciliation; compare actual source with nexttoppersqr and all divergent commits, run tests/staging; then replace main with verified whole working source and archive old branches/tags. No production changes until gates pass.
