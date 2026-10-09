@@ -275,3 +275,31 @@ User reran STEP 2 from WEBPACK_BUILD_FIXED ZIP.
 **Next acceptance gate**: physical Windows production activation to 3550+3500 remains PENDING. WARNING: the package `3_ACTIVATE_MAIN_APP.cmd` executes `PREPARE_AND_ACTIVATE.ps1 -GoLive`, which **runs a new staging backup and build again, then forcibly stops the identified API and web processes and replaces them with newly launched processes**. The API stop/start portion does not automatically restore the previous API process if startup or new report endpoint health check fails. Therefore do NOT describe this as risk-free or as an already tested go-live. Review which supervisor/task launches both live processes and establish explicit manual recovery path before running it during a maintenance window. Backend `app.config` loads project root .env files and falls back to cwd-relative DB path; ensure the new process pins the verified root 50-QR DB and retains required notification/service configuration. Validate API health, QR count, scan counts, old printed QR, main dashboard, timetable, sources/test monitor, /qr/reports and PDF/CSV after cutover.
 
 The full original working-source ZIP and candidate patch were delivered in chat; GitHub main still contains only standalone reporting tools and continuation documents, not a complete accepted Windows web/API release.
+
+
+## 2026-10-09 — User-requested Geo + Devices simplification (new source patch, ZIP available in conversation)
+
+User explicitly requested:
+- Remove Play Store download analytics (the entire App Stores reporting tab was removed, no change to existing QR code redirect destinations).
+- City and District were redundant; drop District entirely and keep City.
+- Replace display name "Browser IDs" and CSV field `anonymous_browsers` with device count; group repeated scans from the same device-profile ID.
+
+**Delivered ZIP:** `NextToppers_QR_Geo_Device_Main_Web_Update_2026-10-09.zip`.
+**SHA-256:** `fc3d58d3829c9bdf5f89e74e84ec7decea8c70b5d57e5f4cefe92df346b4c109`.
+**ZIP:** 13 entries, integrity PASS.
+**Python API/installer tests:** 11/11 PASS; Node TypeScript/TSX syntax diagnostics 0.
+**Full real Windows Next.js build for *this revised* source:** NOT YET RUN; previous Webpack staging passed for earlier compact UI, not this revised source.
+
+New UI is `/qr/reports` with only **Locations** and **Devices** tabs. Metrics: verified scans, estimated unique devices, countries. Location columns `country,state_region,city,scans,estimated_devices`, no district or `anonymous_browsers`. Device CSV has anonymous `device_id` and `scans`; category CSV shows `estimated_devices` per type/OS/browser. PDF omits district and store reporting. Backend `qr_reports.py` removes store/publisher reporting and `stores` / `publisher` CSV sections, uses read-only QR scan aggregation.
+
+**Accuracy caveat (must not misrepresent):** The existing QR landing page persists a first-party anonymous ID in each browser's localStorage (tti_qr_visitor_v3); the fast API hashes it into qr_scans.visitor_hash. Unique visitor hashes therefore estimate **distinct browser profiles**, NOT verified physical device serials, IMEIs, machines or people. Repeat scans of same profile are deduplicated. A single phone using several browsers or private sessions can count more than once. Location-level estimated-device groups may overlap across city rows; global distinct count is separately calculated. It is impossible to promise an actual hardware-device count from only these web visits. No invasive fingerprinting was added.
+
+Windows ZIP:
+- `1_APPLY_GEO_DEVICE.cmd`: dry-run then explicit YES; checks API scalar qr-scale/codes.total against authoritative root `D:\timetable-intelligence-platform\data\timetable.db`, confirms 1000+ historical scans and 30+ QR codes (NOT hardcoded to exactly 50), takes consistent SQLite backup and existing-source backup, changes exactly 3 report files and 2 menu labels. Does not write DB, affect QR redirects/Worker/KV, or restart API/web.
+- `2_BUILD_SAFELY.cmd`: PowerShell parser gate + strict TypeScript + isolated Next.js Webpack staging, **no live restart**. A stage-only `PREPARE_AND_ACTIVATE.ps1` is included and hard-refuses `-GoLive`; dangerous old forced Stop-Process code removed from this ZIP.
+- `ROLLBACK_SOURCE_ONLY.cmd`: source-only restore with hashes and guards, no process or DB restart.
+- `README_FIRST.txt`: beginner steps and verification routes.
+
+**Production status:** NOT LIVE or verified. Run step 1 then step 2 from new ZIP (not any previous ZIP). After `STAGED BUILD PASSED`, review Windows API/web startup supervisor and perform a controlled production cutover separately, keeping root 50+ QR DB pinned. Do NOT run an old Step 3 from earlier ZIP blindly because it can forcibly stop the API without full rollback. After cutover verify browser `/qr/reports`, CSV headers, PDF, original printed QR redirects, new QRs, API count, scans and all timetable functions.
+
+GitHub: This handoff document is updated; the entire new runtime source remains shipped in the conversation ZIP, **not merged** into full application GitHub main. User's one-main-branch consolidation remains pending.
