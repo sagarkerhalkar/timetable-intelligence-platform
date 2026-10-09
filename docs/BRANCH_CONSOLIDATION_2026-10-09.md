@@ -1,0 +1,94 @@
+# GitHub branch consolidation audit — 2026-10-09
+
+## User request
+
+Use ONE understandable GitHub branch, with an easy README and reliable Windows/Linux installation. Protect the worldwide live QR service, permanent printed QR slugs, destinations, historical scans, Cloudflare Worker/KV, Google Sheets and timetables.
+
+## Findings from the GitHub connector (read-only branch comparisons)
+
+- Repo: sagarkerhalkar/timetable-intelligence-platform (public).
+- GitHub default branch: main.
+- At inspection: 22 branch refs; main held only a short README, not the deployed full app.
+- nexttoppersqr has QR release snapshots, worker/API fragments and engineering/recovery notes, but is **not proven identical** to the active Windows application at D:\timetable-intelligence-platform.
+- Release candidate feature/qr-geo-device-store-analytics-20261009 contains isolated read-only reporting; PR #16 is draft and NOT production-approved.
+- An additional feature/qr-geo-device-store-reporting-20261009 branch contains separate API/dashboard/store reporting experiments; NOT production-approved.
+- Separate full-app Linux installation is unverified. Do NOT mark the application Linux-ready.
+
+### Branches reachable from nexttoppersqr already (behind: no separate new commits compared to nexttoppersqr)
+
+- commerce-fix-rc
+- production-working
+- v1
+- v1.0.24-qr-templates-bulk-analytics
+- v1.0.26-qr-scale-analytics-v2
+- working-current
+
+### Divergent branches — must inspect and preserve their distinct commits
+
+- agent/v1.0.13-fast-navigation
+- agent/v1.0.14-performance-cache
+- agent/v1.0.14.1-pagination-contract-fix
+- agent/v1.0.15-stability-week-boundary
+- agent/v1.0.15.1-stable-test-gate-fix
+- agent/v1.0.15.2-release-gate-fix
+- agent/v1.0.16-qr-analytics
+- agent/v1.0.17-short-qr-neutral-link
+- agent/v1.0.18-qr-studio-analytics
+- agent/v1.0.19-commercial-qr-builder
+- agent/v1.0.20-international-qr-platform
+- v1.0.27-worker-gateway-public-qr
+
+### Newer candidate branches (ahead of nexttoppersqr)
+
+- feature/qr-geo-device-store-analytics-20261009
+- feature/qr-geo-device-store-reporting-20261009
+
+Important: an ancestor branch may be redundant as a pointer, but is never proof its release was tested. A diverged branch may contain an important fix, conflicting legacy behavior, or both. Never merge all branches automatically.
+
+## What was done safely this session
+
+- Added tools/qr-insights/qr_insights.py to main, copied from the isolated reporting candidate (reporting only; no Worker/backend edits).
+- Added tools/qr-insights/safe_snapshot.py to main (read-only SQLite backup helper). A sample-database test confirmed independent, integrity-checked backup with source count unchanged.
+- Replaced the insufficient main README with step-by-step Windows and Linux instructions for the standalone report tools.
+- Existing production and historical branch refs left unchanged, including working-current and production-working.
+- No API/web/Worker restart, KV write, database migration, QR image change, or production install occurred.
+
+## Exact blockers to a truthful 'main = complete working app'
+
+1. Need a sanitized, complete copy of the *currently running* Windows server source (API, frontend, package/lock files, schemas/migrations, installers, configs/examples, tests, build scripts). Do not commit production .env, secrets or databases.
+2. Confirm real API process, deployed bundle, Worker version, Cloudflare edge/KV mapping and the authoritative active DATABASE_URL. There was a historical split between service/API timetable.db and project-root data/timetable.db.
+3. Collect critical row-count and QR redirect baseline with a separate consistent DB backup and archive source hashes. Do not alter live data to compare.
+4. Review distinct commits in each divergent branch and port only validated, applicable changes onto a complete staging source.
+5. Produce an offline deterministic Windows installer/update and Linux full-app installation, with explicit prerequisites, start/stop/status/backup/restore instructions.
+6. Pass backend tests, strict TypeScript build, actual Windows and Linux staging smoke tests, QR redirect performance, per-QR scan counts, timetable sources, weekly/today/test monitoring, PDF/CSV reports and rollback.
+7. Only after release acceptance: bring main to the approved complete source, record tag(s)/immutable refs for unique history, verify it can clone/build cleanly and restore to a staging environment; then reduce obsolete branches. Do not delete divergent history without replacement.
+
+## Current release state
+
+**STATUS: SAFE PARTIAL CONSOLIDATION ONLY.** Main is becoming the single documented entrypoint and contains isolated tools. It is **not yet the canonical runnable production application**. PR #16 is draft. No production deployment is authorized from this repository state.
+
+## Next local commands (read-only diagnostics)
+
+Windows PowerShell:
+
+~~~powershell
+cd D:\timetable-intelligence-platform
+git status --short
+git remote -v
+git branch --show-current
+Test-Path "D:\timetable-intelligence-platform\services\api\data\timetable.db"
+Get-NetTCPConnection -LocalPort 3550 -State Listen -ErrorAction SilentlyContinue | Select-Object LocalAddress,LocalPort,OwningProcess
+~~~
+
+If not a Git checkout, git status will fail; this is informational only. Do not git init, git reset, git clean, git checkout, force-push or overwrite the live folder to silence an error.
+
+For report-only download, follow main README. For complete app update, use an isolated staging copy and a verified production backup.
+
+## Safe project invariants
+
+- Existing printed QR slugs/images, destination links, active status, QR user IDs, visitor hashes and historic scan records remain unchanged.
+- Do not deploy or rebuild Cloudflare Worker/KV for an analytics-only upgrade.
+- Do not change existing timetable, Google Sheet, notification and test-series logic to add QR reports.
+- Maintain auth/admin boundaries; never expose raw scan PII publicly.
+- QR confirmed scan count is **not** app downloads. District is Unknown when not provided by trusted geo data.
+- Historical branches remain until all unique validated work is represented in main and a lossless recovery point exists.
