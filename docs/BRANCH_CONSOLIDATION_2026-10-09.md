@@ -150,3 +150,30 @@ Tests:
 **Next immediate action:** User privately downloads the released patch, first runs dry-run on the working Windows source, verifies exact active DATABASE_URL (historical two-DB incident), then runs --apply only after confirming active DB. A controlled staged Next build + API/web restart is still necessary to make the new screen appear. Test all old QR redirect URLs and timetable functionality before marking accepted. No Cloudflare Worker/KV deployment needed.
 
 Branch consolidation remains blocked until sanitized live source is reconciled and production acceptance passes. No branches were deleted/merged in this patch session.
+
+
+## 2026-10-09 15:36 IST — compact QR Insights for MAIN web application (source ZIP delivered)
+
+User requested improvement of working report page: current standalone page is too lengthy, wants a new tab within original NextToppers main web app, and City and District should not be repeated separately when they are the same location name.
+
+**Delivered candidate:** `NextToppers_QR_Compact_Main_Web_Update_2026-10-09.zip` (conversation artifact only, not committed as runtime source).
+**SHA-256:** `d20848e97f40138c47b309e8c58134a84e902cd271bfc2e7f4fb6e6d6fa5f3b9`
+**ZIP entries:** 13, ZIP integrity test PASS.
+**Source-based Python tests:** 4/4 PASS using synthetic 50-QR/1,615-scan SQLite.
+**Frontend validation:** TypeScript TSX transpilation diagnostics 0; full Next.js strict typecheck and production build cannot run in this sandbox because Next/React dependencies are not installed (npm registry unavailable). Mandatory user-host staging gate in shipped script.
+**Live deployment:** NOT performed in this session.
+
+Files in candidate:
+- `apps/web/app/qr/reports/page.tsx` and `reports.css` replace the previous long page with professional compact tabs Locations / Devices / App Stores, 12-row paging, mobile-responsive cards, period/QR search, PDF/CSV downloads.
+- City/District combined **in the UI**; show one label if same. When district unavailable, do not claim city is a verified district.
+- `INSTALL_COMPACT_MAIN.py`: additive main-sidebar nav and QR product nav integration; refuses mismatch between API QR count and the selected root 50-QR DB. Consistent backup of root DB and source before any edits. No API/Worker/QR redirect edits.
+- `PREPARE_AND_ACTIVATE.ps1`: staging strict TypeScript and Next.js build, protected initial DB snapshot. `-GoLive` is explicit opt-in, checks known Uvicorn/Node processes and aborts on Windows-service-managed launcher. Restart API/web only under these guards. Retains previous .next for attempted rollback. **Not exercised on real Windows host.**
+- `1_INSTALL_SOURCE.cmd`, `2_BUILD_SAFELY.cmd`, `3_ACTIVATE_MAIN_APP.cmd`, `ROLLBACK_COMPACT_MAIN.py`, beginner `README_FIRST.txt` and synthetic tests.
+
+**Important live database:** `D:\timetable-intelligence-platform\data\timetable.db` (50 QR codes, 1615 raw scans as user verified earlier). Smaller service/api/data DB (23 QRs, 4 scans) MUST NOT be selected during activation. Live dashboard previously displayed 1209 verified scans. The installer checks **current** live API QR count each run and refuses mismatch.
+
+Main page expected after successful physical Windows cutover: `http://156.156.40.51:3500/qr/reports`. Sidebar tab `Geo & Store Analytics` sits immediately after `QR Analytics`; QR product menu includes `Geo & Stores`.
+
+**Next action:** User extracts ZIP outside production folder; run 1_INSTALL_SOURCE.cmd, 2_BUILD_SAFELY.cmd and only after staging succeeds 3_ACTIVATE_MAIN_APP.cmd during approved maintenance window; provide run output for QA. If service-manager checks fail, use existing supervisor restart procedure instead of forcibly killing processes. Verify same QR counts, Today/Weekly/Test Monitor/Sheets and a printed QR scan after cutover.
+
+**GitHub current status:** this Markdown handoff was updated; the new frontend source was delivered in ZIP and is **NOT** committed to GitHub main. Earlier branches remain unmerged; do not claim one-branch consolidation is complete. No production services or DB were changed by ChatGPT.
