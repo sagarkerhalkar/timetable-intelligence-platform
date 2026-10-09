@@ -170,3 +170,32 @@ Do not push: databases, scan records, private Google Sheets, passwords, .env fil
 - Full release acceptance status: **PENDING**, particularly Windows live-source verification and Linux full-app support.
 
 If anything fails, take a screenshot of the exact error and keep your live website running. Do not fix a reporting error by changing the live DB location, restarting Cloudflare, or deleting old QR entries.
+
+
+## Have a live Windows installation without Git? Prepare a private source REVIEW ZIP
+
+**This is the next action for the real Windows server that reported "fatal: not a git repository."**
+The API is running on port 3550 and the web UI is running on port 3500. Do not run git init or git pull inside D:\timetable-intelligence-platform.
+
+Open PowerShell and paste the entire block:
+
+~~~powershell
+$Review = Join-Path $HOME "NextToppers-Review"
+if (-not (Test-Path (Join-Path $Review ".git"))) {
+    git clone https://github.com/sagarkerhalkar/timetable-intelligence-platform.git "$Review"
+} else {
+    git -C "$Review" pull --ff-only origin main
+}
+if ($LASTEXITCODE -ne 0) { throw "Review source download failed; stopped safely." }
+
+$Desktop = [Environment]::GetFolderPath("Desktop")
+$Zip = Join-Path $Desktop ("NextToppers-Working-Source-Review-" + (Get-Date -Format "yyyyMMdd-HHmmss") + ".zip")
+$Python = "C:\Users\Pc\AppData\Local\Python\pythoncore-3.14-64\python.exe"
+& $Python (Join-Path $Review "tools\local-source-audit\prepare_source_review.py") --root "D:\timetable-intelligence-platform" --output "$Zip"
+~~~
+
+This creates a **source-only review ZIP on the Desktop**, separate from the working app. It is NOT a deployable installer and is NOT a production database backup. It intentionally skips .env, databases, private keys, tokens, logs, build outputs, node_modules, uploaded assets and similar folders; some necessary private configuration will therefore not be included. It also skips files that look like they contain embedded secrets.
+
+**Mandatory human review:** Automated screening cannot guarantee that source code contains no hardcoded secrets. Inspect the archive before sharing it privately for reconciliation. NEVER upload the ZIP directly to this public repository.
+
+Once the sanitized source has been reviewed, we can reconcile the live files against old branches, add reproducible complete source and test releases into main, and only THEN retire unneeded branches. Until that happens, git pull is *not* a safe method to update the running app.
