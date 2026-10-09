@@ -13,6 +13,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Install test-only API dependencies
+        run: python -m pip install fastapi reportlab
       - name: Compile additive scripts
         run: |
           python -m py_compile release-source/nexttoppersqr/qr-analytics-v3/INSTALL_QR_REPORTS_V3.py
