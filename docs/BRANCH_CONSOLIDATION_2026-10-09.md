@@ -333,3 +333,18 @@ User reported **both** SOURCE CHECK PASS and STAGED BUILD PASSED for latest fixe
 **Crucial current status:** still *not live*. No service stopped/restarted, and live `apps\web\.next` was not replaced. The release's staging script explicitly throws on `-GoLive`; no supported Step 3 shipped. Do not run any older prior-release `3_ACTIVATE_MAIN_APP.cmd` (force-stop/rollback gap). Never rerun Step 1 or 2 without a specific reason.
 
 **Next task:** inspect actual port-3550 Python and port-3500 Node launchers and service/task supervision **without revealing secrets or changing processes**. Preflight the same Python interpreter for reportlab + new `app.main` import with DATABASE_URL explicitly pinned to the root 50-QR SQLite file. Design a controlled activation with exact service-manager stop/start, existing production environment preserved, old .next + working API launcher rollback, and validation of QR, redirect, PDF/CSV, timetable/notifications. No Cloudflare Worker/KV changes. Do not call feature live until physical Windows cutover and acceptance are observed.
+
+
+## 2026-10-09 ~18:21 IST — installed Windows auto-restart confirmed working; user requires NO visible command windows
+
+Actual status reported by user from 2_CHECK_STATUS.cmd:
+- Scheduled task `NextToppers-AutoRecovery`: Ready.
+- API 3550: RUNNING PID 38512; web 3500: RUNNING PID 40812.
+- Watchdog: MONITORING, 51 QR codes, 1853 raw scans; ports api_listening=true, web_listening=true.
+- User's priority: every main-app component auto-start on boot/recover crashes and **no visible PowerShell/CMD console windows**; explicitly wants silent background mode, as before.
+
+Read existing delivered AutoRestart ZIP code: `INSTALL_AUTO_RESTART.ps1` registers task `NextToppers-AutoRecovery` under Local SYSTEM (ServiceAccount), at boot and every minute, with single-instance guard. `WATCHDOG.ps1` launches missing Python uvicorn and Node next processes with `Start-Process -WindowStyle Hidden` and redirects logs. The watchdog does not kill existing manual server processes. Therefore **no reinstall or new watch task is needed** to run silently after Windows reboot. The two current visible console windows, if any, belong to manually launched server processes; they must be transitioned to the watchdog one at a time during a short approved maintenance window (stop a manual process, let watchdog recreate it hidden, verify health/QR counts, then stop the other). Do NOT indiscriminately stop other processes or reboot while live sessions are critical. Main app API/web ports covered are 3550+3500 only; no evidence all unrelated services/ports are managed.
+
+IMPORTANT: SYSTEM identity may lack a user's OAuth/Drive permissions even if the import probe passed; physical functional acceptance of Sheets sync, auth, timetable, QR, print/notifications remains recommended after transition. A manual 2_CHECK_STATUS.cmd naturally displays a console while explicitly opened, but scheduled background startup itself should not. Watchdog cannot recover a hung but listening server (only absent listener).
+
+No new code deployed; current data remains untouched. The Geo+Devices production cutover is a separate pending task, and installing auto recovery does not activate it.
