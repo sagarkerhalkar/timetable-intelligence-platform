@@ -1,0 +1,24 @@
+name: QR Reports v3 Isolated Checks
+on:
+  pull_request:
+    paths:
+      - "release-source/nexttoppersqr/qr-analytics-v3/**"
+      - ".github/workflows/qr-reports-v3.yml"
+  workflow_dispatch:
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install test-only API dependencies
+        run: python -m pip install fastapi reportlab
+      - name: Compile additive scripts
+        run: |
+          python -m py_compile release-source/nexttoppersqr/qr-analytics-v3/INSTALL_QR_REPORTS_V3.py
+          python -m py_compile release-source/nexttoppersqr/qr-analytics-v3/services/api/app/api/qr_reporting_v3.py
+          python -m py_compile release-source/nexttoppersqr/qr-analytics-v3/scripts/import_store_downloads_v3.py
+      - name: Importer unit tests (isolated SQLite)
+        run: python -m unittest discover -s release-source/nexttoppersqr/qr-analytics-v3/tests -p "test_*.py" -v
