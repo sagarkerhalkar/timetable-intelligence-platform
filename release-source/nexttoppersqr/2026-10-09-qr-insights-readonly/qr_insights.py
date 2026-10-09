@@ -116,7 +116,7 @@ def save_pdf(path,report):
         cells=[[Paragraph(escape(x),styles["BodyText"]) for x in fields]]
         for row in data:
             cells.append([Paragraph(escape(str(row.get(x,""))[:80]),styles["BodyText"]) for x in fields])
-        t=Table(cells,colWidths=[100]*len(fields),repeatRows=1)
+        t=Table(cells,colWidths=[85]*len(fields),repeatRows=1)
         t.setStyle(TableStyle([("BACKGROUND",(0,0),(-1,0),colors.lightgrey),
                                ("VALIGN",(0,0),(-1,-1),"TOP"),
                                ("BOTTOMPADDING",(0,0),(-1,-1),7)]))
