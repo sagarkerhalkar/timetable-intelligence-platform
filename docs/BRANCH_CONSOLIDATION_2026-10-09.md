@@ -225,3 +225,36 @@ SHA-256: `8f3e26bb175b266de29dc5455aee7d6e376d07fe4e51e2d84d303e109d142ef2`
 **User action:** extract replacement ZIP to a new folder, do not repeat Step 1/source installation, run `2_BUILD_SAFELY.cmd` only. On `STAGED BUILD PASSED`, review real running process configuration before considering Step 3. No services restarted by ChatGPT; previous reported parsing error itself ran before any build/restart. Do not switch to divergent 23-QR DB. Root expected live DB with 50+ QR codes remains `D:\timetable-intelligence-platform\data\timetable.db`.
 
 The replacement ZIP is a conversation artifact, not a GitHub source commit. Branch consolidation and production cutover remain pending.
+
+
+## 2026-10-09: Step 2 Next.js 16 Turbopack junction failure (Webpack staging remedy)
+
+**Exact user-supplied physical Windows result:**
+- Windows PowerShell parser PASS.
+- Live API: 50 QR codes; selected root DB: 50 QR codes, 1,722 raw scans.
+- SQLite consistent snapshot integrity PASS; backup recorded at D:\\timetable-intelligence-platform\\backups\\qr_compact_go_live_20261009-161039\\consistent-before-cutover.db.
+- Next.js TypeScript `tsc --noEmit`: PASS.
+- Next 16.2.12 default Turbopack production build: FAILED before cutover with
+  `Symlink [project]/node_modules is invalid, it points out of the filesystem root`.
+- Existing website was not deliberately restarted. Existing live `.next` unchanged.
+
+**Root cause:** The stage script copied the web source into `backups/.../web-staged` and linked its `node_modules` to `apps/web/node_modules` via a Windows junction. Turbopack's project filesystem-root restriction rejects that outside-root link. This is documented in Next.js (the `--webpack` flag is the official Next 16 Webpack build opt-out; GitHub next.js issue #88335 discusses this exact symlink fault). It is not evidence of lost QR data.
+
+**Delivered candidate ZIP:**
+`NextToppers_QR_Compact_Main_Web_WEBPACK_BUILD_FIXED_2026-10-09.zip`
+SHA-256 `deb bbe80` WITHOUT space => `debbbe80bd8bb07ce05faca3e70e6066eb4200636f5abc3bba32d5f32ee23d05`.
+
+Change is deliberately ONE line in existing `PREPARE_AND_ACTIVATE.ps1`:
+`& npm.cmd run build` --> `& npm.cmd run build -- --webpack`.
+All other original package files are untouched; added only help documentation and a dedicated test file. Build command executes `npm run build -- --webpack`, which becomes `next build --webpack` for existing `package.json`.
+
+**Validation completed in isolated tooling:**
+- Exact original script bytes compared after reversing single-line substitution: same, one change only.
+- ZIP CRC/integrity PASS.
+- 15 separate targeted Python tests PASS (four Webpack build guard tests, three parser guard tests, four QR count tests, four compact installer tests).
+- Full Windows staging Webpack build NOT run by ChatGPT; needs user Windows. The official Webpack option is documented, but this environment cannot confirm compilation of the real app.
+- No live API/web stop/restart, no DB mutation, no Cloudflare changes, no QR image/redirect changes.
+
+**Next user action:** extract the new ZIP to a fresh Downloads folder; SKIP `1_INSTALL_SOURCE.cmd` because source is already installed; execute only `2_BUILD_SAFELY.cmd`, which runs syntax gate, QR count vs root database identity check, consistent backup, strict TypeScript and staging `next build --webpack`. Do NOT run Step 3 until `STAGED BUILD PASSED` and process supervision/cutover have been reviewed. If the Webpack build itself fails, preserve the exact error message and don't repeatedly install source or change databases.
+
+**Remaining high-risk task:** Carefully review actual API/web supervisor and restart mechanism before executing `-GoLive`. Older script force-stops processes; do not assume automatic cutover is safe even after the staging build passes.
