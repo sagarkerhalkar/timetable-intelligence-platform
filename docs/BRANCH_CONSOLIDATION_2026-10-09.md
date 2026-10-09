@@ -199,3 +199,29 @@ Repaired `PREPARE_AND_ACTIVATE.ps1`:
 - Stage first, confirm `STAGED BUILD PASSED`, then review process supervisor and run controlled restart only with appropriate acceptance.
 
 Potential remaining caveats: The auto cutover still requires a stable matched launcher for Python+Node and an approved maintenance window; STOP means do not bypass guards. Full Windows go-live not yet accepted.
+
+
+## 2026-10-09 — Second staging blocker fixed: PowerShell parser syntax error
+
+User ran prior `2_BUILD_SAFELY.cmd` (fixed QR count package) and got:
+`PREPARE_AND_ACTIVATE.ps1:202 char:1 Unexpected token '}' in expression or statement.`
+
+**Root cause verified from exact supplied package:** two accidentally doubled closing quotation marks in `PREPARE_AND_ACTIVATE.ps1`:
+- line 172: `Info "Updated API PASS. QRs=$updatedCount, verified QR scans=$($report.verified_scans)""`
+- line 201: `Info "Database unchanged; verified scan count $($bridge.verified_scans), QR codes $finalQrCount""`
+The malformed strings invalidated PowerShell parsing before any build/restart.
+
+**New self-contained replacement ZIP delivered in chat:**
+`NextToppers_QR_Compact_Main_Web_POWERSHELL_PARSER_FIXED_2026-10-09.zip`
+SHA-256: `8f3e26bb175b266de29dc5455aee7d6e376d07fe4e51e2d84d303e109d142ef2`
+18 package entries, ZIP integrity PASS. Test result 7/7 targeted offline static/guard unit tests PASS. Full Windows PowerShell parser and Next staging build still require execution on the user Windows host (no PowerShell executable on build machine; do not misrepresent offline tests as Windows parser verification).
+
+**Changes:**
+- Removed both extra quotes in staged build + go-live PowerShell script without relaxing any database identity or backup gate.
+- New `CHECK_POWERSHELL_SYNTAX.ps1` calls Windows built-in `[System.Management.Automation.Language.Parser]::ParseFile`, reports exact parser lines and exits nonzero on any error.
+- `2_BUILD_SAFELY.cmd` and `3_ACTIVATE_MAIN_APP.cmd` call the syntax gate before invoking the deployment script.
+- Added explicit test coverage for both broken lines and parser gate; excludes previous test cache from new ZIP.
+
+**User action:** extract replacement ZIP to a new folder, do not repeat Step 1/source installation, run `2_BUILD_SAFELY.cmd` only. On `STAGED BUILD PASSED`, review real running process configuration before considering Step 3. No services restarted by ChatGPT; previous reported parsing error itself ran before any build/restart. Do not switch to divergent 23-QR DB. Root expected live DB with 50+ QR codes remains `D:\timetable-intelligence-platform\data\timetable.db`.
+
+The replacement ZIP is a conversation artifact, not a GitHub source commit. Branch consolidation and production cutover remain pending.
