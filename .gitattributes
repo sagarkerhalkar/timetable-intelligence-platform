@@ -1,0 +1,6 @@
+apps/** -text
+services/** -text
+worker/** -text
+scripts/** -text
+tests/** -text
+*.ps1 -text
