@@ -30,6 +30,7 @@ param(
     [string]$WorkerName = "q",
     [int]$ApiPort = 3550,
     [string]$TaskName = "NextToppers-AutoRecovery",
+    [string]$AppRoot = "D:\timetable-intelligence-platform",
     [switch]$CheckOnly
 )
 
@@ -85,6 +86,23 @@ function Show-Checks($Checks) {
     return $allNeeded
 }
 
+# The app can also carry its own token in a .env file; that one wins over the
+# computer setting, so an old wrong token there must be replaced too.
+$TokenLine = '(?m)^([ \t]*(?:export[ \t]+)?CLOUDFLARE_API_TOKEN[ \t]*=[ \t]*)([^\r\n]*?)([ \t]*\r?)$'
+function Find-AppTokenFiles {
+    if (-not (Test-Path -LiteralPath $AppRoot)) { return @() }
+    $skip = '\\(node_modules|\.next|\.git|\.venv|venv|__pycache__|backups)(\\|$)'
+    return @(Get-ChildItem -LiteralPath $AppRoot -Recurse -Depth 5 -Force -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.FullName -notmatch $skip -and $_.Length -lt 1MB -and
+            ($_.Name -like ".env*" -or $_.Name -like "*.env" -or $_.Extension -in ".ps1", ".cmd", ".bat", ".json", ".jsonc", ".toml", ".py", ".ini", ".xml") } |
+        Where-Object { $_.Name -notlike "*.bak-token-fix-*" -and (Select-String -LiteralPath $_.FullName -Pattern "CLOUDFLARE_API_TOKEN" -SimpleMatch -Quiet) })
+}
+function Get-EnvFileToken([string]$Path) {
+    $m = [regex]::Match([IO.File]::ReadAllText($Path), $TokenLine)
+    if ($m.Success) { return $m.Groups[2].Value.Trim().Trim('"').Trim("'") }
+    return $null
+}
+
 function Get-Sha256([string]$Text) {
     $sha = [Security.Cryptography.SHA256]::Create()
     try { return (-join ($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($Text)) | ForEach-Object { $_.ToString("x2") })) } finally { $sha.Dispose() }
@@ -137,21 +155,34 @@ else { Say "  Scheduled task $TaskName was not found." "Yellow" }
 $listen = Get-NetTCPConnection -LocalPort $ApiPort -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
 if ($listen) { Say "  QR API port ${ApiPort}: running (PID $($listen.OwningProcess))" } else { Say "  QR API port ${ApiPort}: not running" "Yellow" }
 
+$appFiles = Find-AppTokenFiles
+if ($appFiles.Count) {
+    Say "  Files in the app that mention CLOUDFLARE_API_TOKEN:"
+    foreach ($f in $appFiles) {
+        $isEnv = ($f.Name -like ".env*" -or $f.Name -like "*.env")
+        $val = if ($isEnv) { Get-EnvFileToken $f.FullName } else { $null }
+        if ($val) {
+            $ok = (Invoke-CF "/user/tokens/verify" $val).ok -or (Invoke-CF "/accounts/$AccountId/tokens/verify" $val).ok
+            Say ("    {0}  (token set, {1})" -f $f.FullName, $(if ($ok) { "Cloudflare accepts it" } else { "Cloudflare REJECTS it" })) $(if ($ok) { "Gray" } else { "Yellow" })
+        } else { Say ("    {0}  (mentions the name only)" -f $f.FullName) }
+    }
+} else { Say "  No app file under $AppRoot sets CLOUDFLARE_API_TOKEN." }
+
 if ($CheckOnly) { Say ""; Say "Check only: nothing was changed." "Green"; return }
 
 # ---------- 2. New token ----------
 Say ""
 Say "2. Create a new Cloudflare API token (about 2 minutes)" "Cyan"
-Say "  a. Open https://dash.cloudflare.com/profile/api-tokens and sign in."
-Say "  b. Create Token > Custom token > Get started."
-Say "  c. Token name: NextToppers QR server"
-Say "  d. Permissions (use '+ Add more' for each line):"
-Say "       Account | Workers KV Storage | Edit"
-Say "       Account | Workers Scripts    | Read"
-Say "       Account | Account Settings   | Read"
-Say "       User    | User Details       | Read"
-Say "  e. Account Resources: Include > your account. Leave everything else as it is."
-Say "  f. Continue to summary > Create Token > Copy."
+Say "  a. On this server open Chrome or Edge and go to:"
+Say "       https://dash.cloudflare.com/profile/api-tokens"
+Say "     Sign in with the Cloudflare account that has the QR Worker (nexttoppers.workers.dev)."
+Say "  b. Click the blue 'Create Token' button."
+Say "  c. In the list, find 'Edit Cloudflare Workers' and click 'Use template'."
+Say "  d. Account Resources: Include > choose your account."
+Say "     Zone Resources: Include > All zones."
+Say "  e. Click 'Continue to summary', then 'Create Token'."
+Say "  f. Cloudflare shows the token ONCE. Click 'Copy'."
+Say "  g. Come back here, right-click to paste (nothing shows; that is normal), press Enter."
 Say ""
 $secure = Read-Host "  Paste the new token here (it stays hidden) and press Enter" -AsSecureString
 $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
@@ -180,6 +211,17 @@ if ([Environment]::GetEnvironmentVariable("CLOUDFLARE_API_TOKEN", "User")) {
     Say "  Your user had an old token too; it now has the new one."
 }
 Say "  Saved." "Green"
+foreach ($f in $appFiles) {
+    if (-not ($f.Name -like ".env*" -or $f.Name -like "*.env")) { continue }
+    $text = [IO.File]::ReadAllText($f.FullName)
+    $m = [regex]::Match($text, $TokenLine)
+    if (-not $m.Success -or -not $m.Groups[2].Value.Trim()) { continue }
+    $bak = $f.FullName + ".bak-token-fix-" + (Get-Date -Format "yyyyMMdd-HHmmss")
+    Copy-Item -LiteralPath $f.FullName -Destination $bak
+    $text = [regex]::Replace($text, $TokenLine, { param($x) $x.Groups[1].Value + $token + $x.Groups[3].Value })
+    [IO.File]::WriteAllText($f.FullName, $text, (New-Object Text.UTF8Encoding($false)))
+    Say "  Replaced the old token in $($f.FullName) (copy kept: $bak)" "Green"
+}
 
 $seen = Test-SystemSeesToken $token
 if ($seen -ne "same") {
