@@ -29,8 +29,7 @@ Your existing QR codes keep working; only creating or editing QRs is blocked.
 
 ```powershell
 $Review = Join-Path $HOME "NextToppers-Review"
-if (Test-Path (Join-Path $Review ".git")) { git -C $Review pull --ff-only origin main }
-else { git clone https://github.com/sagarkerhalkar/timetable-intelligence-platform.git $Review }
+if (Test-Path (Join-Path $Review ".git")) { git -C $Review pull --ff-only origin main } else { git clone https://github.com/sagarkerhalkar/timetable-intelligence-platform.git $Review }
 powershell -ExecutionPolicy Bypass -File "$Review\tools\cloudflare-token-fix\FIX_QR_CLOUDFLARE_TOKEN.ps1"
 ```
 
