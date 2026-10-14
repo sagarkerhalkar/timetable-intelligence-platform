@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+import os
+
+# Tests must never write to the real Cloudflare QR edge.
+os.environ["NEXTTOPPERS_QR_EDGE_SYNC"] = "off"
+
 from collections.abc import Iterator
 from pathlib import Path
 

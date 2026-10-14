@@ -7,10 +7,14 @@ import shutil
 import subprocess
 import tempfile
 import time
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from pathlib import Path
 from threading import Lock
-from typing import Any, Iterable
+from typing import Any
+from collections.abc import Iterable
+from urllib.parse import quote
+
+import httpx
 
 WORKER_NAME = os.environ.get("NEXTTOPPERS_QR_WORKER_NAME", "q").strip() or "q"
 ACCOUNT_ID = os.environ.get(
@@ -19,6 +23,15 @@ ACCOUNT_ID = os.environ.get(
 ).strip()
 BINDING_NAME = "QR_EDGE"
 CACHE_SECONDS = 600
+CLOUDFLARE_API = "https://api.cloudflare.com/client/v4"
+READBACK_SECONDS = 45
+TOKEN_HELP = (
+    "The QR server has no valid Cloudflare API token. On the server run "
+    "tools\\cloudflare-token-fix\\FIX_QR_CLOUDFLARE_TOKEN.ps1 (Run as administrator) "
+    "from the NextToppers-Review folder."
+)
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+_TRANSPORT: httpx.BaseTransport | None = None  # tests inject a fake Cloudflare here
 
 _DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 _CACHE_FILE = _DATA_DIR / "qr_edge_runtime.json"
@@ -38,11 +51,81 @@ class QrEdgeSyncError(RuntimeError):
 def _log(message: str) -> None:
     try:
         _DATA_DIR.mkdir(parents=True, exist_ok=True)
-        stamp = datetime.now(timezone.utc).isoformat()
+        stamp = datetime.now(UTC).isoformat()
         with _LOG_FILE.open("a", encoding="utf-8") as handle:
             handle.write(f"{stamp} {message}\n")
     except Exception:
         pass
+
+
+def _clean(text: str, limit: int = 600) -> str:
+    """Readable one-line error text: no terminal colour codes, no emoji noise."""
+    text = _ANSI_RE.sub("", text or "")
+    text = "".join(ch if ch.isprintable() or ch == "\n" else " " for ch in text)
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    keep = [line for line in lines if "Logs were written" not in line and "Proxy environment" not in line]
+    return " ".join(keep)[-limit:]
+
+
+def _edge_sync_enabled() -> bool:
+    return os.environ.get("NEXTTOPPERS_QR_EDGE_SYNC", "on").strip().casefold() not in {"0", "off", "false", "no"}
+
+
+def _api_token() -> str:
+    token = os.environ.get("CLOUDFLARE_API_TOKEN", "").strip().strip('"').strip("'")
+    if token.lower().startswith("bearer "):
+        token = token[7:].strip()
+    return token
+
+
+def _cf_errors(response: httpx.Response) -> str:
+    try:
+        body = response.json()
+        errors = body.get("errors") if isinstance(body, dict) else None
+        if errors:
+            return "; ".join(f"{e.get('message')} [code {e.get('code')}]" for e in errors if isinstance(e, dict))
+    except Exception:
+        pass
+    return f"HTTP {response.status_code}: {_clean(response.text, 300)}"
+
+
+def _cf_request(method: str, path: str, *, content: bytes | None = None, raw: bool = False) -> Any:
+    """One Cloudflare REST call. Returns the JSON 'result', or bytes when raw=True."""
+    token = _api_token()
+    if not token:
+        raise QrEdgeSyncError(TOKEN_HELP)
+    headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+    if content is not None:
+        headers["Content-Type"] = "application/octet-stream"
+    last_exc: Exception | None = None
+    for attempt in range(3):
+        try:
+            with httpx.Client(timeout=httpx.Timeout(25.0, connect=10.0), transport=_TRANSPORT) as client:
+                response = client.request(method, CLOUDFLARE_API + path, headers=headers, content=content)
+        except httpx.HTTPError as exc:
+            last_exc = exc
+            time.sleep(1.5 * (attempt + 1))
+            continue
+        if response.status_code in {401, 403}:
+            raise QrEdgeSyncError(f"Cloudflare refused the API token ({_cf_errors(response)}). {TOKEN_HELP}")
+        if response.status_code == 429 or response.status_code >= 500:
+            last_exc = QrEdgeSyncError(f"Cloudflare is busy ({_cf_errors(response)})")
+            time.sleep(1.5 * (attempt + 1))
+            continue
+        if raw:
+            if response.status_code == 404:
+                return None
+            if response.status_code >= 400:
+                raise QrEdgeSyncError(f"Cloudflare {method} failed: {_cf_errors(response)}")
+            return response.content
+        try:
+            body = response.json()
+        except Exception as exc:
+            raise QrEdgeSyncError(f"Cloudflare {method} returned non-JSON: HTTP {response.status_code}") from exc
+        if response.status_code >= 400 or not body.get("success", False):
+            raise QrEdgeSyncError(f"Cloudflare {method} failed: {_cf_errors(response)}")
+        return body
+    raise QrEdgeSyncError(f"Could not reach Cloudflare: {last_exc}")
 
 
 def _value(obj: Any, name: str, default: Any = None) -> Any:
@@ -91,7 +174,10 @@ def _run_wrangler(args: list[str], timeout: int = 120) -> subprocess.CompletedPr
 
 
 def _combined(result: subprocess.CompletedProcess[str]) -> str:
-    return (result.stdout + "\n" + result.stderr).strip()
+    text = _clean(result.stdout + "\n" + result.stderr, 2000)
+    if "CLOUDFLARE_API_TOKEN" in text or "Invalid access token" in text or "Not logged in" in text:
+        return TOKEN_HELP + " Cloudflare said: " + text[-300:]
+    return text
 
 
 def _json_output(result: subprocess.CompletedProcess[str], label: str) -> Any:
@@ -205,6 +291,51 @@ def _discover_production_namespace_ids() -> list[str]:
     return live
 
 
+def _rest_discover_production_namespace_ids() -> list[str]:
+    # Same rule as before: only the deployment serving production traffic now.
+    base = f"/accounts/{ACCOUNT_ID}/workers/scripts/{WORKER_NAME}"
+    deployments = _cf_request("GET", base + "/deployments").get("result") or {}
+    items = deployments.get("deployments") if isinstance(deployments, dict) else None
+    if not items:
+        raise QrEdgeSyncError(f"Cloudflare returned no deployment for Worker {WORKER_NAME}.")
+    current = items[0]
+    version_ids = sorted({
+        str(v.get("version_id")) for v in current.get("versions", [])
+        if isinstance(v, dict) and v.get("version_id")
+    })
+    if not version_ids:
+        raise QrEdgeSyncError(f"Could not identify the version serving Worker {WORKER_NAME}.")
+    bound: set[str] = set()
+    for version_id in version_ids:
+        try:
+            view = _cf_request("GET", f"{base}/versions/{version_id}").get("result")
+        except QrEdgeSyncError as exc:
+            _log(f"version view skipped {version_id}: {exc}")
+            continue
+        bound |= _find_binding_namespace_ids(view)
+    if not bound:
+        raise QrEdgeSyncError("The currently deployed Worker version does not expose a QR_EDGE KV binding.")
+    existing: set[str] = set()
+    page = 1
+    while True:
+        body = _cf_request("GET", f"/accounts/{ACCOUNT_ID}/storage/kv/namespaces?per_page=100&page={page}")
+        for item in body.get("result") or []:
+            candidate = str(item.get("id") or "") if isinstance(item, dict) else ""
+            if _NAMESPACE_ID_RE.fullmatch(candidate):
+                existing.add(candidate)
+        info = body.get("result_info") or {}
+        if page >= int(info.get("total_pages") or 1):
+            break
+        page += 1
+    live = sorted(bound & existing)
+    stale = sorted(bound - existing)
+    if stale:
+        _log(f"ignored stale/deleted production binding ids={stale}")
+    if not live:
+        raise QrEdgeSyncError("QR_EDGE binding was found, but none of its KV namespaces exist in the Cloudflare account.")
+    return live
+
+
 def _read_cache() -> list[str]:
     try:
         payload = json.loads(_CACHE_FILE.read_text(encoding="utf-8"))
@@ -236,7 +367,7 @@ def production_namespace_ids(*, force_refresh: bool = False) -> list[str]:
             cached = _read_cache()
             if cached:
                 return cached
-        ids = _discover_production_namespace_ids()
+        ids = _rest_discover_production_namespace_ids() if _api_token() else _discover_production_namespace_ids()
         _write_cache(ids)
         _log(f"production QR_EDGE namespace ids={ids}")
         return ids
@@ -293,7 +424,39 @@ def _parse_route_json(text: str) -> dict[str, Any] | None:
     return None
 
 
+def _rest_put_and_verify(namespace_id: str, route: dict[str, Any]) -> None:
+    key = f"qr:{route['slug']}"
+    path = f"/accounts/{ACCOUNT_ID}/storage/kv/namespaces/{namespace_id}/values/{quote(key, safe='')}"
+    value = json.dumps(route, ensure_ascii=True, separators=(",", ":"))
+    _cf_request("PUT", path, content=value.encode("utf-8"))
+    # KV is eventually consistent: allow a short delay before declaring failure.
+    deadline = time.time() + READBACK_SECONDS
+    last_readback: dict[str, Any] | None = None
+    while True:
+        data = _cf_request("GET", path, raw=True)
+        readback = _parse_route_json(data.decode("utf-8", "replace")) if data else None
+        if isinstance(readback, dict):
+            last_readback = readback
+            if (
+                str(readback.get("slug") or "") == str(route["slug"])
+                and str(readback.get("target_url") or "") == str(route["target_url"])
+                and bool(readback.get("active")) == bool(route["active"])
+            ):
+                return
+        if time.time() >= deadline:
+            break
+        time.sleep(1.5)
+    raise QrEdgeSyncError(
+        f"KV write succeeded but the new value was not visible within {READBACK_SECONDS} seconds "
+        f"for {namespace_id}. last_target={(last_readback or {}).get('target_url')!r} "
+        f"expected_target={route['target_url']!r}"
+    )
+
+
 def _put_and_verify(namespace_id: str, route: dict[str, Any]) -> None:
+    if _api_token():
+        _rest_put_and_verify(namespace_id, route)
+        return
     """
     Write one QR route to Cloudflare KV without putting the JSON value on the
     Windows command line.
@@ -384,6 +547,9 @@ def _put_and_verify(namespace_id: str, route: dict[str, Any]) -> None:
 def sync_qr_record(record: Any) -> None:
     if str(_value(record, "tracking_mode", "")) != "tracked":
         return
+    if not _edge_sync_enabled():
+        _log(f"SYNC SKIPPED (NEXTTOPPERS_QR_EDGE_SYNC=off) slug={_value(record, 'slug', '')}")
+        return
     slug = str(_value(record, "slug", "")).strip()
     target = str(_value(record, "target_url", "")).strip()
     if not re.fullmatch(r"[A-Za-z0-9_-]{2,80}", slug):
@@ -403,7 +569,7 @@ def sync_qr_record(record: Any) -> None:
         except Exception as exc:
             last_error = exc
             _log(f"SYNC RETRY slug={slug} attempt={attempt + 1} error={exc}")
-    raise QrEdgeSyncError(f"Cloudflare edge sync failed for {slug}: {last_error}")
+    raise QrEdgeSyncError(f"Cloudflare edge sync failed for {slug}: {_clean(str(last_error))}")
 
 
 def sync_qr_records(records: Iterable[Any]) -> None:
@@ -413,6 +579,9 @@ def sync_qr_records(records: Iterable[Any]) -> None:
 
 def deactivate_qr_record(record: Any) -> None:
     if str(_value(record, "tracking_mode", "")) != "tracked":
+        return
+    if not _edge_sync_enabled():
+        _log(f"DEACTIVATE SKIPPED (NEXTTOPPERS_QR_EDGE_SYNC=off) slug={_value(record, 'slug', '')}")
         return
     route = _route_payload(record, force_active=False)
     last_error: Exception | None = None
@@ -426,7 +595,7 @@ def deactivate_qr_record(record: Any) -> None:
         except Exception as exc:
             last_error = exc
             _log(f"DEACTIVATE RETRY slug={route['slug']} attempt={attempt + 1} error={exc}")
-    raise QrEdgeSyncError(f"Cloudflare edge deactivation failed for {route['slug']}: {last_error}")
+    raise QrEdgeSyncError(f"Cloudflare edge deactivation failed for {route['slug']}: {_clean(str(last_error))}")
 
 
 def status_snapshot() -> dict[str, Any]:
