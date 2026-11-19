@@ -157,3 +157,47 @@ def test_scan_is_saved_after_lock_and_never_double_counted(monkeypatch: pytest.M
     assert qr_fast.qr_fast_confirm("lockqr", event) == {"ok": True, "recorded": False}
     with database.connect() as connection:
         assert connection.execute("SELECT COUNT(*) FROM qr_scans").fetchone()[0] == 1
+
+
+def test_qr_image_drawn_once_then_served_from_cache(monkeypatch: pytest.MonkeyPatch, database: Database) -> None:
+    from app.api import routes
+
+    drawn: list[str] = []
+
+    def fake_draw(url, design, db):
+        drawn.append(url)
+        return b"\x89PNG\r\n\x1a\n" + url.encode() + str(sorted(design.items())).encode()
+
+    monkeypatch.setattr(routes, "_render_qr_png_uncached", fake_draw)
+    routes._QR_IMAGE_MEMORY.clear()
+    design = {"foreground_color": "#111827", "dot_style": "rounded"}
+
+    first = routes._render_qr_png("https://q.example/q/abc", design, database)
+    again = routes._render_qr_png("https://q.example/q/abc", dict(design), database)
+    assert first == again and len(drawn) == 1
+
+    # A changed design or link is a different image and is drawn fresh.
+    routes._render_qr_png("https://q.example/q/abc", {**design, "dot_style": "dots"}, database)
+    routes._render_qr_png("https://q.example/q/xyz", design, database)
+    assert len(drawn) == 3
+
+    # After an API restart (empty memory) the copy on disk is used.
+    routes._QR_IMAGE_MEMORY.clear()
+    assert routes._render_qr_png("https://q.example/q/abc", design, database) == first
+    assert len(drawn) == 3
+
+
+def test_qr_image_cache_notices_a_replaced_logo(monkeypatch: pytest.MonkeyPatch, database: Database) -> None:
+    from app.api import routes
+
+    drawn: list[int] = []
+    monkeypatch.setattr(routes, "_render_qr_png_uncached", lambda u, d, db: drawn.append(1) or b"\x89PNG\r\n\x1a\nx")
+    routes._QR_IMAGE_MEMORY.clear()
+    asset_id = "a" * 24
+    logo = routes._qr_asset_dir(database) / f"{asset_id}.png"
+    logo.write_bytes(b"one")
+    design = {"logo_asset_id": asset_id}
+    routes._render_qr_png("https://q.example/q/logo", design, database)
+    logo.write_bytes(b"a different logo")
+    routes._render_qr_png("https://q.example/q/logo", design, database)
+    assert len(drawn) == 2

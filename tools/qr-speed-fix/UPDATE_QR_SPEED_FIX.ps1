@@ -1,10 +1,11 @@
 <#
 NextToppers QR - speed and scan-safety update (2026-11-19)
 
-What changes (3 program files of the QR API, plus 1 test file)
+What changes (4 program files of the QR API, plus 1 test file)
   services\api\app\api\qr_scale.py    QR codes list, analytics, recent scans
   services\api\app\api\qr_reports.py  Geo & device reports, CSV/PDF downloads
   services\api\app\api\qr_fast.py     Scan recording (called by the Worker)
+  services\api\app\api\routes.py      QR images (step 2, added 19 Nov evening)
   services\api\tests\test_v140_qr_speed.py  (new tests, temporary database only)
 
   1. Every QR page request re-ran the whole database setup script, including
@@ -16,6 +17,10 @@ What changes (3 program files of the QR API, plus 1 test file)
      so many open dashboards do not repeat the same heavy query.
   4. A scan that arrives while the database is busy is retried for a few
      seconds instead of being dropped. A repeated scan is never counted twice.
+  5. QR images are drawn once and then reused (memory + D:\...\data\qr_image_cache).
+     Drawing one took 0.2-0.4 s of CPU; My QR Codes drew 25 on every open
+     (~6 s), which slowed the whole API. Same input gives the same image bytes;
+     an edited design, link or logo gets a new image automatically.
 
 What does NOT change
   The database file, tables, triggers, any QR code, slug, destination, scan,
@@ -52,7 +57,8 @@ $Files = @(
     @{ Rel = "services\api\app\api\qr_scale.py"; Old = "2fcc1638b7d87ad55004d1795afcfa1b49b552b9ef57ff2616eda1e3e8b9e37f"; New = "222ef05f367f2b2c0649436eaf605053076f70f494bef614a78907af6d363f7e"; Required = $true },
     @{ Rel = "services\api\app\api\qr_reports.py"; Old = "f95eb508988b78fdf11bd35a394457c8116c0b62e180adfb2b5d51485e14cedf"; New = "c7c6d09f7b3d25ebc12b9754266b62116564a3e7f2afc2b22e5c2f800e962525"; Required = $true },
     @{ Rel = "services\api\app\api\qr_fast.py"; Old = "dc514559d5bd3768e776feb4c8eea08810373d74264750d667d465f3c62d9fe7"; New = "c3dd239d061106081106ded711f1876cf4b286b605d6cb6ad5f77558d9ee08f4"; Required = $true },
-    @{ Rel = "services\api\tests\test_v140_qr_speed.py"; Old = ""; New = "3c7958499c45dfd99327d6cbf893db4c4178600774fc1c1eddc2acd2a5cdeb70"; Required = $false }
+    @{ Rel = "services\api\app\api\routes.py"; Old = "d5975f2107a63a9bcc759608d2a61e3c7581985bc324b0c266c8fd8596d5485c"; New = "88d385d1347a665bbfc0d6c8b51bf6a9d72d98034614a9aeac914dd8c3368df9"; Required = $true },
+    @{ Rel = "services\api\tests\test_v140_qr_speed.py"; Old = "3c7958499c45dfd99327d6cbf893db4c4178600774fc1c1eddc2acd2a5cdeb70"; New = "ddd1a243c2357c8936d697a7030d0df5d9c377220f2aa2fab9a06bddb5331edf"; Required = $false }
 )
 
 function Say([string]$Text, [string]$Color = "Gray") { Write-Host $Text -ForegroundColor $Color }
@@ -158,7 +164,7 @@ $env:NEXTTOPPERS_QR_EDGE_SYNC = "off"
 $env:DATABASE_URL = "sqlite:///" + ((Join-Path $stage "stage-test.db") -replace '\\', '/')
 Push-Location "$stage\services\api"
 try {
-    $out = Invoke-Native { & $py -c "import app.main, app.api.qr_scale as s, app.api.qr_fast as f, app.api.qr_reports as r; assert s._schema_ready and f._with_busy_retry and r._cached_report; print('IMPORT OK')" 2>&1 }
+    $out = Invoke-Native { & $py -c "import app.main, app.api.qr_scale as s, app.api.qr_fast as f, app.api.qr_reports as r, app.api.routes as rt; assert s._schema_ready and f._with_busy_retry and r._cached_report and rt._render_qr_png_uncached; print('IMPORT OK')" 2>&1 }
     if (($out | Out-String) -notmatch 'IMPORT OK') { throw "The new code did not load: $out. Nothing was changed." }
     Say "  New code loads correctly." "Green"
     Invoke-Native { & $py -m pytest --version 2>&1 | Out-Null }

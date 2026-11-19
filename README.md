@@ -94,6 +94,12 @@ Same safety as the fast-sync update: it stops if the live files are not the revi
 version, tests in a temporary copy, backs up, restarts only the QR API, compares QR
 and scan counts, and puts the old files back by itself if any check fails.
 
+**Step 2 (19 Nov evening):** `routes.py` now draws each QR image once and reuses it
+(memory + `data\qr_image_cache`). Drawing one image took 0.2–0.4 s of CPU, and
+My QR Codes drew 25 on every open (~6 s measured live), which slowed the whole API.
+Same QR + same design always gives the same image bytes; an edited design, link or
+logo gets a new image. Run the same two commands again after `git -C $Review pull`.
+
 Two more changes in this branch take effect only when deployed separately:
 
 - `worker/src/index.js` – the Worker retries a scan confirmation (after 1.5 s and 5 s)

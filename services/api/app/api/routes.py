@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import base64
 import csv
+import hashlib
 import io
 import json
 import math
+import os
 import re
 import secrets
+from collections import OrderedDict
 from pathlib import Path
 from urllib.parse import quote, urlencode, urlparse
 
@@ -716,7 +719,97 @@ def _pil_draw_marker(
         draw.rectangle(center_box, fill=foreground)
 
 
+# Rendering one styled QR PNG costs ~0.2-0.4 s of CPU. My QR Codes shows 25 at
+# once, so every page open used to cost ~6 s of API time and slowed everything
+# else (including scan recording). The image depends only on the encoded text,
+# the design and the logo file, so identical input always gives identical bytes:
+# keep them in memory and on disk (survives restarts). A changed design, link or
+# logo produces a different key, so an edited QR never shows an old image.
+_QR_IMAGE_CACHE_VERSION = "1"
+_QR_IMAGE_MEMORY: "OrderedDict[str, bytes]" = OrderedDict()
+_QR_IMAGE_MEMORY_MAX = 600
+_QR_IMAGE_LOCK = Lock()
+_QR_IMAGE_DISK_MAX_FILES = 5000
+_PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+
+
+def _qr_image_key(tracking_url: str, code_design: dict[str, object], database: Database) -> str:
+    logo_state = ""
+    logo_path = _qr_asset_path(database, str(code_design.get("logo_asset_id") or ""))
+    if logo_path:
+        try:
+            info = logo_path.stat()
+            logo_state = f"{logo_path.name}:{info.st_size}:{info.st_mtime_ns}"
+        except OSError:
+            logo_state = logo_path.name
+    raw = json.dumps(
+        [_QR_IMAGE_CACHE_VERSION, tracking_url, code_design, logo_state],
+        sort_keys=True, default=str, ensure_ascii=True, separators=(",", ":"),
+    )
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _qr_image_cache_dir(database: Database) -> Path:
+    path = database.path.parent / "qr_image_cache"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def _render_qr_png(
+    tracking_url: str,
+    code_design: dict[str, object],
+    database: Database,
+) -> bytes:
+    key = _qr_image_key(tracking_url, code_design, database)
+    with _QR_IMAGE_LOCK:
+        cached = _QR_IMAGE_MEMORY.get(key)
+        if cached is not None:
+            _QR_IMAGE_MEMORY.move_to_end(key)
+            return cached
+    disk_path: Path | None = None
+    try:
+        disk_path = _qr_image_cache_dir(database) / f"{key}.png"
+        data = disk_path.read_bytes() if disk_path.is_file() else b""
+        if data.startswith(_PNG_SIGNATURE):
+            _remember_qr_image(key, data)
+            return data
+    except OSError:
+        disk_path = None
+    data = _render_qr_png_uncached(tracking_url, code_design, database)
+    _remember_qr_image(key, data)
+    if disk_path is not None:
+        try:
+            temp = disk_path.with_suffix(f".{secrets.token_hex(4)}.tmp")
+            temp.write_bytes(data)
+            os.replace(temp, disk_path)
+            _trim_qr_image_disk_cache(disk_path.parent)
+        except OSError:
+            pass
+    return data
+
+
+def _remember_qr_image(key: str, data: bytes) -> None:
+    with _QR_IMAGE_LOCK:
+        _QR_IMAGE_MEMORY[key] = data
+        _QR_IMAGE_MEMORY.move_to_end(key)
+        while len(_QR_IMAGE_MEMORY) > _QR_IMAGE_MEMORY_MAX:
+            _QR_IMAGE_MEMORY.popitem(last=False)
+
+
+def _trim_qr_image_disk_cache(folder: Path) -> None:
+    # Only cached copies live here; the database and uploaded logos are elsewhere.
+    try:
+        files = list(folder.glob("*.png"))
+        if len(files) <= _QR_IMAGE_DISK_MAX_FILES:
+            return
+        files.sort(key=lambda item: item.stat().st_mtime)
+        for old in files[: len(files) - _QR_IMAGE_DISK_MAX_FILES]:
+            old.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+def _render_qr_png_uncached(
     tracking_url: str,
     code_design: dict[str, object],
     database: Database,
@@ -1263,8 +1356,6 @@ def qr_code_image(
     safe_name = re.sub(r"[^A-Za-z0-9._-]+", "-", code.name).strip("-") or "qr-code"
     headers = {"Cache-Control": "no-store"}
     design = code.design.model_dump()
-    logo_path = _qr_asset_path(database, code.design.logo_asset_id)
-    logo_data = logo_path.read_bytes() if logo_path else None
 
     png_content = _render_qr_png(encoded_value, design, database)
 
