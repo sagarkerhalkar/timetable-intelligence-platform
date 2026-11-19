@@ -33,7 +33,6 @@ export function NavigationLinks({ mobile = false }: { mobile?: boolean }) {
               const details = event.currentTarget.closest("details.mobile-menu") as HTMLDetailsElement | null;
               if (details) details.open = false;
             }}
-            prefetch
           >
             <span aria-hidden="true">{icon}</span>
             {mobile ? <small>{label.split(" ")[0]}</small> : label}

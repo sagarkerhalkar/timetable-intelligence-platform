@@ -3,6 +3,8 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import sqlite3
+import time
 from datetime import UTC, datetime
 from urllib.parse import parse_qs, urlparse
 
@@ -99,6 +101,26 @@ def _platform(query: str, referrer: str) -> tuple[str, str]:
     return "Direct / QR", "unknown"
 
 
+def _with_busy_retry(action):
+    """Run a database call again if SQLite is briefly busy.
+
+    A scan used to be dropped when the database was locked for more than the
+    5 s busy timeout: the Worker sends the scan once and does not retry. Scan
+    inserts are idempotent (unique event_hash + INSERT OR IGNORE), so repeating
+    the call can never count the same scan twice.
+    """
+    delays = (0.25, 0.75, 1.5, 3.0)
+    for attempt in range(len(delays) + 1):
+        try:
+            return action()
+        except sqlite3.OperationalError as error:
+            message = str(error).lower()
+            if attempt >= len(delays) or ("locked" not in message and "busy" not in message):
+                raise
+            time.sleep(delays[attempt])
+    raise RuntimeError("unreachable")
+
+
 def _lightweight_qr_row(slug: str):
     if not _SLUG_RE.fullmatch(slug):
         return None
@@ -166,7 +188,7 @@ def qr_fast_resolve(slug: str) -> dict[str, object]:
 
 @router.post("/{slug}/confirm")
 def qr_fast_confirm(slug: str, event: FastScanEvent) -> dict[str, object]:
-    row = _lightweight_qr_row(slug)
+    row = _with_busy_retry(lambda: _lightweight_qr_row(slug))
     if row is None:
         raise HTTPException(status_code=404, detail="QR code not found")
     if not bool(row["active"]):
@@ -198,7 +220,7 @@ def qr_fast_confirm(slug: str, event: FastScanEvent) -> dict[str, object]:
     telemetry_json = json.dumps(telemetry, ensure_ascii=True, separators=(",", ":"))[:12000]
 
     database = get_database()
-    inserted = database.record_qr_scan(
+    inserted = _with_busy_retry(lambda: database.record_qr_scan(
         qr_id=str(row["id"]),
         scanned_at=datetime.now(UTC),
         visitor_hash=visitor_hash,
@@ -219,5 +241,5 @@ def qr_fast_confirm(slug: str, event: FastScanEvent) -> dict[str, object]:
         telemetry_json=telemetry_json,
         screen_width=max(0, min(20000, int(event.screen_width))) if event.screen_width is not None else None,
         screen_height=max(0, min(20000, int(event.screen_height))) if event.screen_height is not None else None,
-    )
+    ))
     return {"ok": True, "recorded": inserted is not None}
