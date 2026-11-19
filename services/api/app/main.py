@@ -12,6 +12,7 @@ from .api.routes import router
 from .api.qr_fast import router as qr_fast_router
 from .api.qr_scale import ensure_qr_scale_schema, qr_scale_aggregation_loop, router as qr_scale_router
 from .api.qr_reports import router as qr_reports_router
+from .api.qr_insights import router as qr_insights_router
 from .config import settings
 from .dependencies import get_database, get_sync_service
 from .services.notifications import run_due_notifications
@@ -101,6 +102,7 @@ def create_app() -> FastAPI:
     app.include_router(qr_fast_router)
     app.include_router(qr_scale_router)
     app.include_router(qr_reports_router)
+    app.include_router(qr_insights_router)
     return app
 
 

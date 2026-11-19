@@ -109,6 +109,39 @@ Two more changes in this branch take effect only when deployed separately:
   longer fully pre-render every page in the background (each page open used to
   render ~14 other pages on the server). Takes effect at the next website build.
 
+## Update: QR Insights, new analytics and one-link sharing (19 Nov 2026)
+
+**What you get**
+- New **QR Analytics** page (`/qr/stats`): verified scans with change vs the previous period,
+  unique and returning devices, daily trend, busiest hours and weekdays, sources, states,
+  cities, mobile networks, devices, top QR codes and a live feed. Works in light and dark mode
+  on phone, tablet and desktop.
+- **One link for everything.** There are no separate WhatsApp/Instagram/Facebook links.
+  Sources are recognised automatically: Google Lens / Google app, Google Search, YouTube,
+  Gmail and WhatsApp (Android) from what the phone reports; Instagram, Facebook, Snapchat,
+  LinkedIn and X from their in-app browsers (new scans). Camera scans that report nothing are
+  shown honestly as "Not reported".
+- Old scans are re-read with the better labels: nothing in the database is changed.
+- Location: state is reliable; the city is the network's city (often the operator's hub city on
+  Indian mobile data) and is labelled as approximate. Mobile network (Jio, Airtel, Vi, BSNL…) shown.
+- My QR Codes: one-link Share window (copy, WhatsApp, Telegram, Facebook, X, Email, SMS, phone
+  share sheet, PNG/SVG/PDF); phones now open the list as cards (it was empty on phones).
+- Refreshed QR tab bar (sticky, dark mode).
+
+**Install** (PowerShell, **Run as administrator**, at a quiet time; the website is offline
+for about 10–60 seconds while it restarts, QR codes keep working):
+
+```powershell
+$Review = Join-Path $HOME "NextToppers-Review"
+git -C $Review pull
+powershell -ExecutionPolicy Bypass -File "$Review\tools\qr-insights-update\UPDATE_QR_INSIGHTS.ps1" -CheckOnly
+powershell -ExecutionPolicy Bypass -File "$Review\tools\qr-insights-update\UPDATE_QR_INSIGHTS.ps1"
+```
+
+It also installs the earlier speed fix and QR image cache if they are not installed yet.
+The website is built in a separate copy first; the live site is changed only if that build
+succeeds, and it is put back automatically if any page check fails.
+
 ## QR reports
 
 See [docs/QR_REPORTS_GUIDE.md](docs/QR_REPORTS_GUIDE.md).

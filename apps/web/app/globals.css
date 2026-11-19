@@ -2150,3 +2150,39 @@ button, a, input, select, textarea { touch-action: manipulation; }
 @media(max-width:760px){.qsv2-hero,.qav2-hero{align-items:flex-start;flex-direction:column;padding:20px}.qsv2-toolbar{position:static;grid-template-columns:1fr 1fr}.qsv2-search{grid-column:1/-1}.qsv2-view-toggle{grid-column:1/-1}.qsv2-selection{align-items:flex-start;flex-direction:column}.qsv2-table-wrap{display:none}.qsv2-card-grid{display:grid!important;grid-template-columns:1fr}.qsv2-page .qsv2-card-grid{display:grid}.qsv2-page:has(.qsv2-table-wrap) .qsv2-table-wrap{display:none}.qav2-controls{flex-direction:column}.qav2-qr-filter{width:100%;min-width:0}.qav2-kpis{grid-template-columns:repeat(2,1fr)}.qav2-grid{grid-template-columns:1fr}.qav2-panel.wide{grid-column:span 1}.qav2-trend{height:190px}.qav2-table-wrap{overflow:auto}.qsv2-modal{padding:20px}.qsv2-actions{white-space:normal}}
 /* ===== end v1.0.26 ===== */
 
+
+/* QR tab bar refresh (Nov 2026): clearer active tab, sticky on scroll, dark mode. */
+.qrfy-product-nav{position:sticky;top:10px;z-index:40;backdrop-filter:saturate(1.4) blur(10px);-webkit-backdrop-filter:saturate(1.4) blur(10px);background:rgba(255,255,255,.88);border-radius:18px;padding:8px 10px 8px 14px}
+.qrfy-product-tabs{gap:4px;padding:4px;border-radius:14px;background:#f2f4fa}
+.qrfy-product-tabs a{border-radius:10px;padding:9px 14px;color:#5b6172}
+.qrfy-product-tabs a:hover{background:#fff;color:#1d2a5c;transform:none}
+.qrfy-product-tabs a.active{background:#fff;color:var(--qblue);box-shadow:0 1px 2px rgba(16,24,40,.08),0 4px 12px rgba(36,85,255,.12)}
+html[data-theme="dark"] .qrfy-product-nav{background:rgba(13,29,43,.9);border-color:#1d3344;box-shadow:0 10px 30px rgba(0,0,0,.25)}
+html[data-theme="dark"] .qrfy-product-brand strong{color:#e8eef6}
+html[data-theme="dark"] .qrfy-product-brand small{color:#93a4b8}
+html[data-theme="dark"] .qrfy-product-tabs{background:#11263a}
+html[data-theme="dark"] .qrfy-product-tabs a{color:#93a4b8}
+html[data-theme="dark"] .qrfy-product-tabs a:hover{background:#0d1d2b;color:#e8eef6}
+html[data-theme="dark"] .qrfy-product-tabs a.active{background:#0d1d2b;color:#8fa8ff;box-shadow:0 1px 3px rgba(0,0,0,.4)}
+@media(max-width:900px){.qrfy-product-nav{position:static}.qrfy-product-tabs{background:transparent;padding:0}}
+
+/* My QR Codes: share-links window */
+.qsv2-share{text-align:left}
+.qsv2-share h2{margin:4px 0 6px}
+.qsv2-share-help{margin:0 0 14px;color:#667085;font-size:13px;line-height:1.5}
+.qsv2-share-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
+.qsv2-share-chips button,.qsv2-share-chips a{border:1px solid #dbe1ea;background:#fff;color:#344054;border-radius:999px;padding:8px 13px;font-weight:700;font-size:13px;cursor:pointer;text-decoration:none}
+.qsv2-share-chips a:hover,.qsv2-share-chips button:hover{border-color:#2455ff;color:#2455ff}
+.qsv2-share-chips button.active{background:#2455ff;border-color:#2455ff;color:#fff}
+.qsv2-share .qsv2-downloads{margin-top:4px}.qsv2-share-foot{margin:14px 0 0;text-align:center}.qsv2-share-foot a{color:#2455ff;font-weight:700}
+.qsv2-share-link{display:flex;gap:8px;margin-bottom:12px}
+.qsv2-share-link input{flex:1;min-width:0;height:42px;border:1px solid #d9dee8;border-radius:10px;padding:0 12px;font:inherit;font-size:13px;background:#f7f8fc;color:#15172b}
+.qsv2-share .qsv2-modal-links{justify-content:flex-start;margin-bottom:6px}
+.qsv2-share>img{display:block}
+html[data-theme="dark"] .qsv2-modal{background:#0d1d2b;color:#e8eef6}
+html[data-theme="dark"] .qsv2-modal .close{background:#11263a;color:#e8eef6}
+html[data-theme="dark"] .qsv2-share-chips button,html[data-theme="dark"] .qsv2-share-chips a{background:#11263a;border-color:#1d3344;color:#c9d6e3}
+html[data-theme="dark"] .qsv2-share-chips button.active{background:#6b8cff;border-color:#6b8cff;color:#07131f}
+html[data-theme="dark"] .qsv2-share-link input{background:#11263a;border-color:#1d3344;color:#e8eef6}
+html[data-theme="dark"] .qsv2-modal-links button,html[data-theme="dark"] .qsv2-modal-links a:not(:first-child){background:#11263a;border-color:#1d3344;color:#e8eef6}
+.qsv2-share>img{width:min(230px,70vw)}

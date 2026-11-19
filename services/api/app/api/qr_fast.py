@@ -74,7 +74,29 @@ def _device(ua: str) -> str:
     return "Other"
 
 
-def _platform(query: str, referrer: str) -> tuple[str, str]:
+# In-app browsers name themselves in the user agent. One normal QR link is then
+# attributed automatically, with no separate link per app. Most specific first.
+_IN_APP_UA = (
+    (re.compile(r"Instagram", re.I), "Instagram"),
+    (re.compile(r"FBAN/|FBAV/|FB_IAB|FBIOS|\[FB", re.I), "Facebook"),
+    (re.compile(r"Snapchat", re.I), "Snapchat"),
+    (re.compile(r"LinkedInApp", re.I), "LinkedIn"),
+    (re.compile(r"Pinterest", re.I), "Pinterest"),
+    (re.compile(r"Twitter", re.I), "X / Twitter"),
+    (re.compile(r"Telegram", re.I), "Telegram"),
+    (re.compile(r"\bLine/", re.I), "Line"),
+    (re.compile(r"GSA/", re.I), "Google app"),
+)
+
+
+def _in_app(user_agent: str) -> str | None:
+    for pattern, name in _IN_APP_UA:
+        if pattern.search(user_agent or ""):
+            return name
+    return None
+
+
+def _platform(query: str, referrer: str, user_agent: str = "") -> tuple[str, str]:
     parsed = parse_qs(query.lstrip("?"), keep_blank_values=False)
     for key in ("nt_source", "source", "channel", "utm_source", "src"):
         values = parsed.get(key)
@@ -86,6 +108,9 @@ def _platform(query: str, referrer: str) -> tuple[str, str]:
                 "web": "Web", "email": "Email",
             }.get(raw.lower(), raw)
             return named, "exact"
+    app = _in_app(user_agent)
+    if app:
+        return app, "detected"
     host = ""
     try:
         host = (urlparse(referrer).hostname or "").lower()
@@ -207,7 +232,7 @@ def qr_fast_confirm(slug: str, event: FastScanEvent) -> dict[str, object]:
         referrer_host = _clip(urlparse(referrer).hostname or "", 255)
     except ValueError:
         referrer_host = ""
-    platform, confidence = _platform(_clip(event.query, 1000), referrer)
+    platform, confidence = _platform(_clip(event.query, 1000), referrer, ua)
     edge = event.edge if isinstance(event.edge, dict) else {}
     country = _clip(edge.get("country") or "Unknown", 80)
     email = _clip(event.scanner_email, 254).strip().lower()

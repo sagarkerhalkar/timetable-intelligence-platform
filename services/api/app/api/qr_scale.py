@@ -12,6 +12,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, HTTPException, Query
 
 from ..dependencies import get_database
+from .qr_insights import classify_source, network_name
 
 router = APIRouter(prefix="/api/v1/qr-scale", tags=["qr-scale"])
 _SCHEMA_VERSION = "3"
@@ -684,7 +685,11 @@ def qr_scale_recent_scans(
     with database.connect() as connection:
         rows = connection.execute(
             f"""SELECT s.id,s.qr_id,q.name AS qr_name,s.scanned_at,s.country,s.device_type,s.browser,
-                       s.operating_system,s.platform,s.source_confidence,s.scanner_email,s.visitor_hash
+                       s.operating_system,s.platform,s.source_confidence,s.scanner_email,s.visitor_hash,
+                       s.referrer_host,
+                       CASE WHEN json_valid(s.telemetry_json) THEN json_extract(s.telemetry_json,'$.edge.region') END AS region,
+                       CASE WHEN json_valid(s.telemetry_json) THEN json_extract(s.telemetry_json,'$.edge.city') END AS city,
+                       CASE WHEN json_valid(s.telemetry_json) THEN json_extract(s.telemetry_json,'$.edge.asOrganization') END AS network
                 FROM qr_scans s JOIN qr_codes q ON q.id=s.qr_id
                 WHERE {where} ORDER BY s.id DESC LIMIT ?""",
             tuple(params + [limit + 1]),
@@ -700,6 +705,12 @@ def qr_scale_recent_scans(
                 "operating_system": str(row["operating_system"]), "platform": str(row["platform"]),
                 "source_confidence": str(row["source_confidence"]), "scanner_email": str(row["scanner_email"] or ""),
                 "device_id": f"Device {str(row['visitor_hash'])[:8].upper()}",
+                # Added for QR Insights; older clients simply ignore these fields.
+                "referrer_host": str(row["referrer_host"] or ""),
+                "source": classify_source(row["platform"], row["source_confidence"], row["referrer_host"]),
+                "region": str(row["region"] or ""),
+                "city": str(row["city"] or ""),
+                "network": network_name(row["network"]),
             }
             for row in rows
         ],

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { ChangeEvent, MouseEvent } from "react";
+import type { ChangeEvent, FocusEvent, MouseEvent } from "react";
 import { QrProductNav } from "../../../components/qr-product-nav";
 
 const PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL ?? "/backend";
@@ -26,6 +26,17 @@ const CHANNELS:Channel[] = [
   {value:"teams",label:"Microsoft Teams"},{value:"slack",label:"Slack"},{value:"discord",label:"Discord"}
 ];
 
+// One link for every app. QR Analytics works out the source automatically
+// (Google Lens, WhatsApp, Instagram, Facebook, YouTube, ...) from the scan itself.
+function shareTargets(name:string,link:string){const text=encodeURIComponent(`${name}\n${link}`);const url=encodeURIComponent(link);return [
+  {label:"WhatsApp",href:`https://wa.me/?text=${text}`},
+  {label:"Telegram",href:`https://t.me/share/url?url=${url}&text=${encodeURIComponent(name)}`},
+  {label:"Facebook",href:`https://www.facebook.com/sharer/sharer.php?u=${url}`},
+  {label:"X",href:`https://x.com/intent/post?text=${text}`},
+  {label:"Email",href:`mailto:?subject=${encodeURIComponent(name)}&body=${text}`},
+  {label:"SMS",href:`sms:?&body=${text}`},
+]}
+
 function formatNumber(value:number){return value.toLocaleString("en-IN")}
 function formatDate(value:string){const d=new Date(value);return Number.isNaN(d.valueOf())?value:new Intl.DateTimeFormat("en-IN",{day:"2-digit",month:"short",year:"numeric"}).format(d)}
 function absoluteUrl(value:string){if(!value)return "";try{return new URL(value,window.location.origin).toString()}catch{return value}}
@@ -42,6 +53,8 @@ export default function QrCodesScalePage(){
   const [selected,setSelected]=useState<Set<string>>(new Set());const [view,setView]=useState<ViewMode>("table");
   const [preview,setPreview]=useState<QrRow|null>(null);const [channelCode,setChannelCode]=useState<QrRow|null>(null);const [channel,setChannel]=useState("whatsapp");const [channelFormat,setChannelFormat]=useState<"png"|"svg"|"pdf">("png");
 
+  // Phones hide the table (see globals.css), so open them in Cards view or the list looks empty.
+  useEffect(()=>{if(window.matchMedia("(max-width: 760px)").matches)setView("cards")},[]);
   useEffect(()=>{const timer=window.setTimeout(()=>setSearch(searchDraft.trim()),260);return()=>window.clearTimeout(timer)},[searchDraft]);
   useEffect(()=>{setCursor(null);setHistory([])},[search,status,type,sort,limit]);
 
@@ -66,6 +79,7 @@ export default function QrCodesScalePage(){
     <button type="button" onClick={()=>void copySource(code)}>Copy Source</button>
     <button type="button" onClick={()=>setPreview(code)}>Open QR</button>
     <button type="button" onClick={()=>void copyQr(code)}>Copy QR Link</button>
+    {code.tracking_mode==="tracked"?<button type="button" onClick={()=>{setChannelCode(code)}}>Share</button>:null}
     <Link href={`/qr/stats?qr_id=${encodeURIComponent(code.id)}`}>Analytics</Link>
     <details><summary>•••</summary><div className="qsv2-action-menu">
       <Link href={`/qr?edit=${encodeURIComponent(code.id)}`}>Edit QR</Link>
@@ -73,7 +87,7 @@ export default function QrCodesScalePage(){
       <button onClick={()=>download(imageUrl(code,"png",undefined,true))}>Download PNG</button>
       <button onClick={()=>download(imageUrl(code,"svg",undefined,true))}>Download SVG</button>
       <button onClick={()=>download(imageUrl(code,"pdf",undefined,true))}>Download PDF</button>
-      <button onClick={()=>setChannelCode(code)}>Channel QR…</button>
+      <button onClick={()=>setChannelCode(code)}>Share…</button>
       <button onClick={()=>void clearScans(code)}>Clear scan data</button>
       <button className="danger" onClick={()=>void deleteCode(code)}>Delete permanently</button>
     </div></details>
@@ -104,7 +118,13 @@ export default function QrCodesScalePage(){
 
     {preview?<div className="qsv2-modal-backdrop" role="dialog" aria-modal="true" onMouseDown={(e:MouseEvent<HTMLDivElement>)=>{if(e.target===e.currentTarget)setPreview(null)}}><section className="qsv2-modal"><button className="close" onClick={()=>setPreview(null)}>×</button><p className="qrfy-kicker">Open QR anytime</p><h2>{preview.name}</h2><img src={imageUrl(preview,"png")} alt={`QR code for ${preview.name}`}/><div className="qsv2-modal-links"><button onClick={()=>void copySource(preview)}>Copy Source Link</button><button onClick={()=>void copyQr(preview)}>Copy QR Link</button>{preview.public_url?<a href={absoluteUrl(preview.public_url)} target="_blank" rel="noreferrer">Open public QR link ↗</a>:null}</div><div className="qsv2-downloads"><button onClick={()=>download(imageUrl(preview,"png",undefined,true))}>PNG</button><button onClick={()=>download(imageUrl(preview,"svg",undefined,true))}>SVG</button><button onClick={()=>download(imageUrl(preview,"pdf",undefined,true))}>PDF</button></div></section></div>:null}
 
-    {channelCode?<div className="qsv2-modal-backdrop" role="dialog" aria-modal="true" onMouseDown={(e:MouseEvent<HTMLDivElement>)=>{if(e.target===e.currentTarget)setChannelCode(null)}}><section className="qsv2-modal small"><button className="close" onClick={()=>setChannelCode(null)}>×</button><p className="qrfy-kicker">Exact source attribution</p><h2>Channel QR</h2><label><span>Channel</span><select value={channel} onChange={(e:ChangeEvent<HTMLSelectElement>)=>setChannel(e.target.value)}>{CHANNELS.map(x=><option value={x.value} key={x.value}>{x.label}</option>)}</select></label><label><span>Format</span><select value={channelFormat} onChange={(e:ChangeEvent<HTMLSelectElement>)=>setChannelFormat(e.target.value as "png"|"svg"|"pdf")}><option value="png">PNG</option><option value="svg">SVG</option><option value="pdf">PDF</option></select></label><img src={imageUrl(channelCode,"png",channel)} alt="Channel QR preview"/><button className="qrfy-button primary" onClick={()=>download(imageUrl(channelCode,channelFormat,channel,true))}>Download channel QR</button></section></div>:null}
+    {channelCode?(()=>{const link=absoluteUrl(channelCode.public_url);const canShare=typeof navigator!=="undefined"&&typeof navigator.share==="function";return <div className="qsv2-modal-backdrop" role="dialog" aria-modal="true" onMouseDown={(e:MouseEvent<HTMLDivElement>)=>{if(e.target===e.currentTarget)setChannelCode(null)}}><section className="qsv2-modal small qsv2-share"><button className="close" onClick={()=>setChannelCode(null)}>×</button><p className="qrfy-kicker">One link for everywhere</p><h2>Share “{channelCode.name}”</h2><p className="qsv2-share-help">Use this same link in WhatsApp, Instagram, Facebook, YouTube, Telegram, websites and print. QR Analytics detects the source automatically whenever the phone or app reports it.</p>
+      <div className="qsv2-share-link"><input readOnly value={link} aria-label="QR link" onFocus={(e:FocusEvent<HTMLInputElement>)=>e.currentTarget.select()}/><button type="button" className="qrfy-button primary" onClick={()=>{void copyText(link);setMessage(`Link copied: ${channelCode.name}`)}}>Copy</button></div>
+      <div className="qsv2-share-chips">{canShare?<button type="button" className="active" onClick={()=>{void navigator.share({title:channelCode.name,url:link}).catch(()=>undefined)}}>Share…</button>:null}{shareTargets(channelCode.name,link).map(t=><a key={t.label} href={t.href} target="_blank" rel="noreferrer">{t.label}</a>)}</div>
+      <img src={imageUrl(channelCode,"png")} alt={`QR code for ${channelCode.name}`}/>
+      <div className="qsv2-downloads"><button onClick={()=>download(imageUrl(channelCode,"png",undefined,true))}>Download PNG</button><button onClick={()=>download(imageUrl(channelCode,"svg",undefined,true))}>SVG</button><button onClick={()=>download(imageUrl(channelCode,"pdf",undefined,true))}>PDF</button></div>
+      <p className="qsv2-share-help qsv2-share-foot"><Link href={`/qr/stats?qr_id=${encodeURIComponent(channelCode.id)}`}>See this QR&apos;s analytics →</Link></p>
+    </section></div>})():null}
   </main>
 }
 
