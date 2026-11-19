@@ -388,35 +388,47 @@ if ($webCopy.Count) {
     $nodeEnvFiles = @(Get-ChildItem -LiteralPath $wstage -Filter ".env*" -File -Force -ErrorAction SilentlyContinue | Where-Object { Select-String -LiteralPath $_.FullName -Pattern '^\s*NODE_ENV\s*=' -Quiet } | ForEach-Object { $_.Name })
     Say ("  NODE_ENV before build: window='" + [string]$env:NODE_ENV + "', Windows machine='" + [string][Environment]::GetEnvironmentVariable("NODE_ENV", "Machine") + "', user='" + [string][Environment]::GetEnvironmentVariable("NODE_ENV", "User") + "', set in files: " + $(if ($nodeEnvFiles.Count) { $nodeEnvFiles -join ", " } else { "none" }))
     $env:NODE_ENV = "production"
-    Push-Location $wstage
-    try {
-        $buildOut = Invoke-Native { & $plan.Node $plan.NextBin build 2>&1 | Out-String }
-        $buildCode = $LASTEXITCODE
-    } finally { Pop-Location }
-    if ($buildCode -ne 0 -or -not (Test-Path -LiteralPath (Join-Path $wstage ".next\BUILD_ID"))) {
-        $tail = ($buildOut -split "`n" | Select-Object -Last 40) -join "`n"
-        Say $tail "Yellow"
-        # Diagnose: does the CURRENT (unchanged) website build here? Put the live versions of the
-        # changed files back into the copy and build once more. The live site is still untouched.
-        Say ""
-        Say "  Diagnosis: building the current, unchanged website the same way..." "Cyan"
-        foreach ($f in $WebFiles) {
-            $rel = $f.Rel.Substring("apps\web\".Length)
-            $live = Join-Path $plan.Web $rel
-            $d = Join-Path $wstage $rel
-            if (Test-Path -LiteralPath $live) { Copy-Item -LiteralPath $live -Destination $d -Force } else { Remove-Item -LiteralPath $d -Force -ErrorAction SilentlyContinue }
-        }
+
+    # How was the live site built? Use the same builder first (Turbopack is the Next.js 16
+    # default; Webpack is the long-standing one). Each try happens only in the copy.
+    $liveNextDir = Join-Path $plan.Web ".next"
+    $liveBuilder = "unknown"
+    if (Test-Path -LiteralPath (Join-Path $liveNextDir "server\webpack-runtime.js")) { $liveBuilder = "webpack" }
+    elseif (Test-Path -LiteralPath (Join-Path $liveNextDir "server\chunks\ssr")) { $liveBuilder = "turbopack" }
+    $liveBuiltAt = ""
+    if (Test-Path -LiteralPath (Join-Path $liveNextDir "BUILD_ID")) { $liveBuiltAt = [string](Get-Item -LiteralPath (Join-Path $liveNextDir "BUILD_ID")).LastWriteTime }
+    $ver = { param($pkg) try { (Get-Content -Raw -LiteralPath (Join-Path $plan.Web "node_modules\$pkg\package.json") | ConvertFrom-Json).version } catch { "?" } }
+    $nodeVer = (Invoke-Native { & $plan.Node --version 2>&1 | Out-String }).Trim()
+    Say "  Live site was built with: $liveBuilder ($liveBuiltAt). Node $nodeVer, next $(& $ver 'next'), react $(& $ver 'react'), react-dom $(& $ver 'react-dom')"
+    $envNames = @()
+    foreach ($ef in @(Get-ChildItem -LiteralPath $wstage -Filter ".env*" -File -Force -ErrorAction SilentlyContinue)) {
+        $names = @(Get-Content -LiteralPath $ef.FullName | ForEach-Object { if ($_ -match '^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=') { $Matches[1] } })
+        $envNames += "$($ef.Name): $($names -join ', ')"
+    }
+    Say ("  Settings files (names only): " + $(if ($envNames.Count) { $envNames -join ' | ' } else { "none" }))
+    Say ("  NODE_OPTIONS set: " + $(if ($env:NODE_OPTIONS) { "yes" } else { "no" }))
+
+    $attempts = @("turbopack", "webpack")
+    if ($liveBuilder -eq "webpack") { $attempts = @("webpack", "turbopack") }
+    $built = $false
+    $buildOut = ""
+    foreach ($builder in $attempts) {
         Remove-Item -LiteralPath (Join-Path $wstage ".next") -Recurse -Force -ErrorAction SilentlyContinue
+        Say "  Building with $builder..."
         Push-Location $wstage
         try {
-            $diagOut = Invoke-Native { & $plan.Node $plan.NextBin build 2>&1 | Out-String }
-            $diagCode = $LASTEXITCODE
+            if ($builder -eq "webpack") { $buildOut = Invoke-Native { & $plan.Node $plan.NextBin build --webpack 2>&1 | Out-String } }
+            else { $buildOut = Invoke-Native { & $plan.Node $plan.NextBin build 2>&1 | Out-String } }
+            $buildCode = $LASTEXITCODE
         } finally { Pop-Location }
-        if ($diagCode -eq 0) { Say "  DIAGNOSIS: the current website builds, so the problem is in the new files." "Yellow" }
-        else {
-            Say (($diagOut -split "`n" | Where-Object { $_ -match 'Error|error|Invariant|prerender' } | Select-Object -First 8) -join "`n") "Yellow"
-            Say "  DIAGNOSIS: the CURRENT website also fails to build on this server, so the problem is the build setup, not the new files." "Yellow"
-        }
+        if ($buildCode -eq 0 -and (Test-Path -LiteralPath (Join-Path $wstage ".next\BUILD_ID"))) { $built = $true; Say "  Build with $builder succeeded." "Green"; break }
+        $short = ($buildOut -split "`n" | Where-Object { $_ -match 'Error|error|Invariant|prerender|failed' } | Select-Object -First 6) -join "`n"
+        Say "  Build with $builder failed:" "Yellow"
+        Say $short "Yellow"
+    }
+    if (-not $built) {
+        $tail = ($buildOut -split "`n" | Select-Object -Last 30) -join "`n"
+        Say $tail "Yellow"
         Remove-Item -LiteralPath $wstage -Recurse -Force -ErrorAction SilentlyContinue
         throw "The new website did not build, so the live website was NOT changed (the QR API update is installed and working). Send this whole window to Claude."
     }
