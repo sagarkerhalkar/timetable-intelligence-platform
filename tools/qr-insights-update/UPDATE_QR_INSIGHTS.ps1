@@ -56,14 +56,14 @@ $ApiFiles = @(
     @{ Rel = "services\api\app\api\qr_fast.py"; Old = @("dc514559d5bd3768e776feb4c8eea08810373d74264750d667d465f3c62d9fe7", "c3dd239d061106081106ded711f1876cf4b286b605d6cb6ad5f77558d9ee08f4"); New = "3b89f66c7e908ee706edf18e06c87af28b1b87e9b64ae4731a9d948cdd8cf60e"; Required = $true },
     @{ Rel = "services\api\app\api\qr_reports.py"; Old = @("f95eb508988b78fdf11bd35a394457c8116c0b62e180adfb2b5d51485e14cedf"); New = "c7c6d09f7b3d25ebc12b9754266b62116564a3e7f2afc2b22e5c2f800e962525"; Required = $true },
     @{ Rel = "services\api\app\api\routes.py"; Old = @("d5975f2107a63a9bcc759608d2a61e3c7581985bc324b0c266c8fd8596d5485c"); New = "88d385d1347a665bbfc0d6c8b51bf6a9d72d98034614a9aeac914dd8c3368df9"; Required = $true },
-    @{ Rel = "services\api\app\main.py"; Old = @("d4943af13e4730baee7bfc18e2d38ebc82b3ee4351840d6ef611e5a3a8a562d8"); New = "dc9b0b69c322fe40e65933e58f87fdd7d6d7b1ce57bfb7deb3970a07c06f29f8"; Required = $true },
-    @{ Rel = "services\api\app\api\qr_insights.py"; Old = @(""); New = "ecdc8707abf806f8467ef25824376648f42333fe2d804e52e54cc8a91d31b8b6"; Required = $true },
+    @{ Rel = "services\api\app\main.py"; Old = @("d4943af13e4730baee7bfc18e2d38ebc82b3ee4351840d6ef611e5a3a8a562d8", "dc9b0b69c322fe40e65933e58f87fdd7d6d7b1ce57bfb7deb3970a07c06f29f8"); New = "8e641426a762c6044b01c845936ebd6f0c657e62cf87c01f8730ab298c923a50"; Required = $true },
+    @{ Rel = "services\api\app\api\qr_insights.py"; Old = @("", "ecdc8707abf806f8467ef25824376648f42333fe2d804e52e54cc8a91d31b8b6"); New = "be72da6bcc4863462b64b712fb7e1a77f7f5fe1fa6be466f4a0a2659c907540c"; Required = $true },
     @{ Rel = "services\api\tests\test_v140_qr_speed.py"; Old = @("", "3c7958499c45dfd99327d6cbf893db4c4178600774fc1c1eddc2acd2a5cdeb70"); New = "ddd1a243c2357c8936d697a7030d0df5d9c377220f2aa2fab9a06bddb5331edf"; Required = $false },
-    @{ Rel = "services\api\tests\test_v141_qr_insights.py"; Old = @(""); New = "76235b93669dd572fbdd3bee94c9b1d04aa085e46b12c8e0ea837af57bbc5abf"; Required = $false }
+    @{ Rel = "services\api\tests\test_v141_qr_insights.py"; Old = @("", "76235b93669dd572fbdd3bee94c9b1d04aa085e46b12c8e0ea837af57bbc5abf"); New = "af60c467fb77e43e507df9cdad6dfde4bc4c3614e69797d0aa21c8ad1f6f508d"; Required = $false }
 )
 $WebFiles = @(
-    @{ Rel = "apps\web\app\qr\stats\page.tsx"; Old = @("b301fa37f2f511cefcbd3c57cb62ea412377b066955089d17454cf69c1391240"); New = "1de6da23dc19a67bc3b5fd3bb90dc033e840a1b29836880f1bce1d4a826c1859"; Required = $true },
-    @{ Rel = "apps\web\app\qr\stats\insights.css"; Old = @(""); New = "09b6922fc202f217e4b9c570a41cdefd20ca9fedf9977728536b90000db1ad71"; Required = $true },
+    @{ Rel = "apps\web\app\qr\stats\page.tsx"; Old = @("b301fa37f2f511cefcbd3c57cb62ea412377b066955089d17454cf69c1391240", "1de6da23dc19a67bc3b5fd3bb90dc033e840a1b29836880f1bce1d4a826c1859"); New = "b809e65837208b41f6bb8c9f0cc87dad1d32c761fe34cdabee7751b113cac9af"; Required = $true },
+    @{ Rel = "apps\web\app\qr\stats\insights.css"; Old = @("", "09b6922fc202f217e4b9c570a41cdefd20ca9fedf9977728536b90000db1ad71"); New = "8e31209ea34b42bc84e0dcad4507b2a5c7c05b89137c0d6764b26f5d5a414928"; Required = $true },
     @{ Rel = "apps\web\app\qr\codes\page.tsx"; Old = @("4f29cffc2d5574339ccbc3b807976894f23349d3e187552ee4e4ff37d73d91e1"); New = "e680d751d01a5e2d4cea03a18bf9762b49710a18ec44e1aa004da45607a5f27c"; Required = $true },
     @{ Rel = "apps\web\app\globals.css"; Old = @("3c5903479e970f69177815b5a8f67ac83e62c375d7d0a04d35713b088df51eb9"); New = "112bb6b411a4fa8e6eaa78de0b2d8794258347a995e586d3f5354a71b959e85d"; Required = $true },
     @{ Rel = "apps\web\components\navigation-links.tsx"; Old = @("dc5594bc0e6e609456ae0001d70db78ad81892a3b72c9c801e9919441864c860"); New = "7b401ee4ac871c70683aaaf6fa0ac847d92a8d702bfd8514b993f830bfb03d54"; Required = $true },

@@ -12,7 +12,7 @@ from .api.routes import router
 from .api.qr_fast import router as qr_fast_router
 from .api.qr_scale import ensure_qr_scale_schema, qr_scale_aggregation_loop, router as qr_scale_router
 from .api.qr_reports import router as qr_reports_router
-from .api.qr_insights import router as qr_insights_router
+from .api.qr_insights import prewarm_loop as qr_insights_prewarm_loop, router as qr_insights_router
 from .config import settings
 from .dependencies import get_database, get_sync_service
 from .services.notifications import run_due_notifications
@@ -61,14 +61,17 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     sync_task: asyncio.Task[None] | None = None
     notification_task: asyncio.Task[None] | None = None
     qr_scale_task: asyncio.Task[None] | None = None
+    insights_task: asyncio.Task[None] | None = None
     if settings.auto_sync_enabled:
         sync_task = asyncio.create_task(_automatic_sync_loop())
     notification_task = asyncio.create_task(_notification_loop())
     qr_scale_task = asyncio.create_task(qr_scale_aggregation_loop())
+    # Keeps QR Analytics pre-calculated so pages answer instantly.
+    insights_task = asyncio.create_task(qr_insights_prewarm_loop())
     try:
         yield
     finally:
-        for task in (sync_task, notification_task, qr_scale_task):
+        for task in (sync_task, notification_task, qr_scale_task, insights_task):
             if task is None:
                 continue
             task.cancel()

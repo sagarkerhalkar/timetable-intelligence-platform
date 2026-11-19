@@ -133,3 +133,71 @@ def test_plain_chrome_and_tags_unchanged() -> None:
     assert _platform("", "", chrome) == ("Direct / QR", "unknown")
     assert _platform("?src=whatsapp", "", chrome) == ("WhatsApp", "exact")
     assert _platform("", "android-app://com.whatsapp/", chrome) == ("WhatsApp", "detected")
+
+
+def _seed(database: Database, n: int = 3) -> None:
+    now = datetime.now(UTC).isoformat()
+    with database.connect() as connection:
+        connection.execute(
+            "INSERT OR IGNORE INTO qr_codes(id,name,slug,target_url,created_at,updated_at) VALUES('g1','Geo QR','geo01','https://example.com',?,?)",
+            (now, now),
+        )
+    places = [("Bihar", "Patna", "Reliance Jio Infocomm Limited"), ("Bihar", "Gaya", "Bharti Airtel"), ("Delhi", "Delhi", "Bharti Airtel")]
+    for i in range(n):
+        region, city, org = places[i % len(places)]
+        database.record_qr_scan(
+            qr_id="g1", scanned_at=datetime.now(UTC) - timedelta(minutes=i), visitor_hash=f"d{i % 2}", event_hash=f"geo-{i}-{n}",
+            confirmed=True, country="IN", device_type="Mobile", browser="Chrome", platform="Direct / QR",
+            source_confidence="unknown", referrer_host="",
+            telemetry_json=json.dumps({"edge": {"region": region, "city": city, "asOrganization": org}}),
+        )
+
+
+def _point(monkeypatch: pytest.MonkeyPatch, database: Database) -> None:
+    monkeypatch.setattr(qr_insights, "get_database", lambda: database)
+    qr_insights._CACHE.clear()
+
+
+def test_location_details_and_csv_downloads(monkeypatch: pytest.MonkeyPatch, database: Database) -> None:
+    _point(monkeypatch, database)
+    _seed(database, 3)
+    data = qr_insights.locations(period="30d", qr_id="")
+    places = {(i["state"], i["city"]): i for i in data["items"]}
+    assert data["total_scans"] == 3
+    assert places[("Bihar", "Patna")]["network"] == "Jio"
+    assert places[("Delhi", "Delhi")]["network"] == "Airtel"
+    assert all(i["devices"] >= 1 and i["last_scan"] for i in data["items"])
+
+    loc = qr_insights.locations_csv(period="30d", qr_id="")
+    text = loc.body.decode("utf-8-sig")
+    assert text.splitlines()[0].startswith('Country,State / Region,"City (approx.')
+    assert "Patna" in text and 'attachment; filename="nexttoppers-qr-locations-30d' in loc.headers["content-disposition"]
+
+    scans = qr_insights.scans_csv(period="30d", qr_id="g1")
+    lines = scans.body.decode("utf-8-sig").splitlines()
+    assert len(lines) == 4 and "Camera scan or app link (not reported)" in lines[1]
+    assert any("Patna" in line and "Jio" in line for line in lines[1:])
+
+
+def test_location_memo_reads_new_scans_only_once(monkeypatch: pytest.MonkeyPatch, database: Database) -> None:
+    _point(monkeypatch, database)
+    _seed(database, 2)
+    memo = qr_insights._geo(database)
+    first_max = memo.max_id
+    _seed(database, 3)  # adds three more scans
+    memo = qr_insights._geo(database)
+    assert memo.max_id > first_max
+    assert {memo.get(i)[1] for i in range(1, memo.max_id + 1)} >= {"Patna", "Gaya", "Delhi"}
+
+
+def test_cached_answer_is_served_instantly_while_refreshing(monkeypatch: pytest.MonkeyPatch, database: Database) -> None:
+    _point(monkeypatch, database)
+    _seed(database, 3)
+    first = qr_insights.overview(period="30d", qr_id="")
+    key = (str(database.path), "30d", "")
+    stamp, value = qr_insights._CACHE[key]
+    qr_insights._CACHE[key] = (stamp - 3600, value)  # pretend it is an hour old
+    calls: list[int] = []
+    monkeypatch.setattr(qr_insights, "_refresh_in_background", lambda k: calls.append(1))
+    again = qr_insights.overview(period="30d", qr_id="")
+    assert again["totals"]["scans"] == first["totals"]["scans"] and calls == [1]

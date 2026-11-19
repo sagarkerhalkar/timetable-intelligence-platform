@@ -17,13 +17,17 @@ Accuracy rules shown to people in the UI:
 from __future__ import annotations
 
 import copy
+import csv
+import io
 import threading
 import time
+from array import array
 from collections import Counter, defaultdict
 from datetime import UTC, date, datetime, timedelta, timezone
+from functools import lru_cache
 from typing import Any, Literal
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Response
 
 from ..dependencies import get_database
 
@@ -112,6 +116,12 @@ _HOSTS: tuple[tuple[str, tuple[str, str, str]], ...] = (
 _NO_REFERRER = ("direct", "Camera scan or app link (not reported)", "Not reported")
 
 
+@lru_cache(maxsize=4096)
+def _classify_cached(platform: str, confidence: str, referrer_host: str) -> tuple[str, str, str, str]:
+    r = classify_source(platform, confidence, referrer_host)
+    return r["channel"], r["label"], r["group"], r["how"]
+
+
 def classify_source(platform: str | None, confidence: str | None, referrer_host: str | None) -> dict[str, str]:
     """Return channel, label, group and how the source is known ("tagged", "detected", "not_reported")."""
     platform_text = str(platform or "").strip()
@@ -169,6 +179,63 @@ def network_name(as_org: str | None) -> str:
 
 
 # --------------------------------------------------------------------------
+# Location memo
+# --------------------------------------------------------------------------
+# Location sits inside each scan's telemetry JSON. Parsing that JSON for every scan
+# on every refresh was the slow part (seconds). Scans never change after they are
+# written, so each scan's (state, city, network) is read once and remembered as a
+# small number per scan id (4 bytes each; 1 million scans is about 4 MB).
+class _GeoMemo:
+    def __init__(self) -> None:
+        self.keys: list[tuple[str, str, str]] = [("", "", "")]
+        self.index: dict[tuple[str, str, str], int] = {("", "", ""): 0}
+        self.codes = array("i")
+        self.max_id = 0
+        self.lock = threading.Lock()
+
+    def refresh(self, database: Any) -> None:
+        with self.lock:
+            edge = "CASE WHEN json_valid(telemetry_json) THEN json_extract(telemetry_json,'$.edge.{0}') END"
+            with database.connect() as connection:
+                rows = connection.execute(
+                    f"SELECT id,{edge.format('region')},{edge.format('city')},{edge.format('asOrganization')} "
+                    "FROM qr_scans WHERE id>? ORDER BY id",
+                    (self.max_id,),
+                ).fetchall()
+            for row in rows:
+                scan_id = int(row[0])
+                key = (str(row[1] or "").strip(), str(row[2] or "").strip(), network_name(row[3]) if row[3] else "")
+                code = self.index.get(key)
+                if code is None:
+                    code = len(self.keys)
+                    self.keys.append(key)
+                    self.index[key] = code
+                if scan_id >= len(self.codes):
+                    self.codes.extend([0] * (scan_id + 1 - len(self.codes)))
+                self.codes[scan_id] = code
+                self.max_id = max(self.max_id, scan_id)
+
+    def get(self, scan_id: int) -> tuple[str, str, str]:
+        if 0 <= scan_id < len(self.codes):
+            return self.keys[self.codes[scan_id]]
+        return ("", "", "")
+
+
+_GEO: dict[str, _GeoMemo] = {}
+_GEO_LOCK = threading.Lock()
+
+
+def _geo(database: Any) -> _GeoMemo:
+    key = str(database.path)
+    with _GEO_LOCK:
+        memo = _GEO.get(key)
+        if memo is None:
+            memo = _GEO[key] = _GeoMemo()
+    memo.refresh(database)
+    return memo
+
+
+# --------------------------------------------------------------------------
 # Computation
 # --------------------------------------------------------------------------
 def _ist_day_start_utc(day: date) -> str:
@@ -187,12 +254,10 @@ def _top(counter: Counter, limit: int, key: str = "label") -> list[dict[str, Any
     return [{key: name, "scans": count} for name, count in counter.most_common(limit)]
 
 
-def compute_overview(period: str, qr_id: str) -> dict[str, Any]:
-    database = get_database()
+def _scope(period: str, qr_id: str) -> tuple[list[str], list[Any], date | None, int | None, date]:
     today = datetime.now(IST).date()
     days = PERIOD_DAYS[period]
     start_day = today - timedelta(days=days - 1) if days else None
-
     where = ["s.confirmed=1", "s.device_type!='bot'"]
     params: list[Any] = []
     if start_day:
@@ -201,7 +266,17 @@ def compute_overview(period: str, qr_id: str) -> dict[str, Any]:
     if qr_id:
         where.append("s.qr_id=?")
         params.append(qr_id)
-    edge = "CASE WHEN json_valid(s.telemetry_json) THEN json_extract(s.telemetry_json,'$.edge.{0}') END"
+    return where, params, start_day, days, today
+
+
+def _ist_text(value: str | None) -> str:
+    moment = _parse_utc(value or "")
+    return moment.astimezone(IST).strftime("%d %b %Y, %I:%M %p") if moment else ""
+
+
+def compute_full(period: str, qr_id: str) -> dict[str, Any]:
+    database = get_database()
+    where, params, start_day, days, today = _scope(period, qr_id)
 
     with database.connect() as connection:
         qr_name = None
@@ -211,15 +286,13 @@ def compute_overview(period: str, qr_id: str) -> dict[str, Any]:
                 raise HTTPException(status_code=404, detail="QR code not found")
             qr_name = str(row["name"])
         rows = connection.execute(
-            f"""SELECT s.qr_id,s.scanned_at,s.visitor_hash,s.country,s.device_type,s.browser,
-                       s.operating_system,s.platform,s.source_confidence,s.referrer_host,s.language,
-                       {edge.format('region')} AS region,{edge.format('city')} AS city,
-                       {edge.format('asOrganization')} AS network
+            f"""SELECT s.id,s.qr_id,s.scanned_at,s.visitor_hash,s.country,s.device_type,s.browser,
+                       s.operating_system,s.platform,s.source_confidence,s.referrer_host,s.language
                 FROM qr_scans s WHERE {' AND '.join(where)}""",
             tuple(params),
         ).fetchall()
         previous_scans = None
-        if start_day:
+        if start_day and days:
             prev_start = start_day - timedelta(days=days)
             prev_params: list[Any] = [_ist_day_start_utc(prev_start), _ist_day_start_utc(start_day)]
             prev_sql = "SELECT COUNT(*) FROM qr_scans s WHERE s.confirmed=1 AND s.device_type!='bot' AND s.scanned_at>=? AND s.scanned_at<?"
@@ -228,6 +301,7 @@ def compute_overview(period: str, qr_id: str) -> dict[str, Any]:
                 prev_params.append(qr_id)
             previous_scans = int(connection.execute(prev_sql, tuple(prev_params)).fetchone()[0])
         names = {str(r["id"]): str(r["name"]) for r in connection.execute("SELECT id,name FROM qr_codes").fetchall()}
+    geo = _geo(database)
 
     daily: Counter = Counter()
     daily_visitors: dict[str, set[str]] = defaultdict(set)
@@ -245,11 +319,13 @@ def compute_overview(period: str, qr_id: str) -> dict[str, Any]:
     browsers: Counter = Counter()
     languages: Counter = Counter()
     per_qr: Counter = Counter()
+    places: dict[tuple[str, str, str], dict[str, Any]] = {}
     located = 0
     first_day: date | None = None
 
     for row in rows:
-        moment = _parse_utc(row["scanned_at"])
+        scanned_at = str(row["scanned_at"])
+        moment = _parse_utc(scanned_at)
         if moment is None:
             continue
         local = moment.astimezone(IST)
@@ -264,23 +340,35 @@ def compute_overview(period: str, qr_id: str) -> dict[str, Any]:
         hours[local.hour] += 1
         weekdays[local.weekday()] += 1
 
-        src = classify_source(row["platform"], row["source_confidence"], row["referrer_host"])
-        entry = sources.setdefault(src["channel"], {**src, "scans": 0, "hosts": Counter()})
+        channel, label, group, known = _classify_cached(str(row["platform"] or ""), str(row["source_confidence"] or ""), str(row["referrer_host"] or ""))
+        entry = sources.get(channel)
+        if entry is None:
+            entry = sources[channel] = {"channel": channel, "label": label, "group": group, "how": known, "scans": 0, "hosts": Counter()}
         entry["scans"] += 1
         if row["referrer_host"]:
             entry["hosts"][str(row["referrer_host"])] += 1
-        how[src["how"]] += 1
+        how[known] += 1
 
         country = str(row["country"] or "").strip() or "Unknown"
         countries[country] += 1
-        region = str(row["region"] or "").strip()
-        city = str(row["city"] or "").strip()
+        region, city, network = geo.get(int(row["id"]))
         if region:
             states[f"{region}|{country}"] += 1
             located += 1
         if city:
             cities[f"{city}|{region}|{country}"] += 1
-        networks[network_name(row["network"])] += 1
+        networks[network or "Not reported"] += 1
+        place_key = (country, region or "Not reported", city or "Not reported")
+        place = places.get(place_key)
+        if place is None:
+            place = places[place_key] = {"scans": 0, "devices": set(), "networks": Counter(), "last": ""}
+        place["scans"] += 1
+        if visitor:
+            place["devices"].add(visitor)
+        if network:
+            place["networks"][network] += 1
+        if scanned_at > place["last"]:
+            place["last"] = scanned_at
         devices[str(row["device_type"] or "Other")] += 1
         systems[str(row["operating_system"] or "Other")] += 1
         browsers[str(row["browser"] or "Other")] += 1
@@ -291,28 +379,33 @@ def compute_overview(period: str, qr_id: str) -> dict[str, Any]:
     total = len(rows)
     trend: list[dict[str, Any]] = []
     if total:
-        span_start = start_day or first_day or today
-        cursor = span_start
+        cursor = start_day or first_day or today
         while cursor <= today:
-            key = cursor.isoformat()
-            trend.append({"day": key, "scans": daily.get(key, 0), "unique": len(daily_visitors.get(key, ()))})
+            k = cursor.isoformat()
+            trend.append({"day": k, "scans": daily.get(k, 0), "unique": len(daily_visitors.get(k, ()))})
             cursor += timedelta(days=1)
-    today_key = today.isoformat()
-    yesterday_key = (today - timedelta(days=1)).isoformat()
     returning = sum(1 for count in visitors.values() if count > 1)
 
     def pct(value: int) -> float:
         return round(value * 100.0 / total, 1) if total else 0.0
 
-    source_rows = []
-    for entry in sorted(sources.values(), key=lambda item: item["scans"], reverse=True):
-        source_rows.append({
-            "channel": entry["channel"], "label": entry["label"], "group": entry["group"], "how": entry["how"],
-            "scans": entry["scans"], "share": pct(entry["scans"]),
-            "hosts": [{"host": h, "scans": c} for h, c in entry["hosts"].most_common(3)],
+    source_rows = [{
+        "channel": e["channel"], "label": e["label"], "group": e["group"], "how": e["how"],
+        "scans": e["scans"], "share": pct(e["scans"]),
+        "hosts": [{"host": h, "scans": c} for h, c in e["hosts"].most_common(3)],
+    } for e in sorted(sources.values(), key=lambda item: item["scans"], reverse=True)]
+
+    location_rows = []
+    for (country, state, city), place in sorted(places.items(), key=lambda item: item[1]["scans"], reverse=True):
+        top_network = place["networks"].most_common(1)
+        location_rows.append({
+            "country": country, "state": state, "city": city, "scans": place["scans"],
+            "devices": len(place["devices"]), "share": pct(place["scans"]),
+            "network": top_network[0][0] if top_network else "Not reported",
+            "last_scan": place["last"],
         })
 
-    return {
+    overview = {
         "period": period,
         "qr_id": qr_id or None,
         "qr_name": qr_name,
@@ -324,8 +417,8 @@ def compute_overview(period: str, qr_id: str) -> dict[str, Any]:
             "returning_devices": returning,
             "returning_share": round(returning * 100.0 / len(visitors), 1) if visitors else 0.0,
             "scans_per_device": round(total / len(visitors), 2) if visitors else 0.0,
-            "today": daily.get(today_key, 0),
-            "yesterday": daily.get(yesterday_key, 0),
+            "today": daily.get(today.isoformat(), 0),
+            "yesterday": daily.get((today - timedelta(days=1)).isoformat(), 0),
             "previous_period_scans": previous_scans,
             "change_pct": (round((total - previous_scans) * 100.0 / previous_scans, 1) if previous_scans else None),
             "active_days": sum(1 for value in daily.values() if value),
@@ -350,6 +443,7 @@ def compute_overview(period: str, qr_id: str) -> dict[str, Any]:
         "browsers": _top(browsers, 10),
         "languages": _top(languages, 10),
         "top_qr_codes": [] if qr_id else [{"id": i, "name": names.get(i, "Deleted QR"), "scans": c} for i, c in per_qr.most_common(10)],
+        "location_count": len(location_rows),
         "accuracy": {
             "location_coverage": pct(located),
             "location": "Network location from Cloudflare. Country and state are reliable. City is the internet provider's city; on Indian mobile data it is often the operator's hub city, not the exact place of the phone.",
@@ -358,23 +452,174 @@ def compute_overview(period: str, qr_id: str) -> dict[str, Any]:
             "verified": "Only verified human scans: the scan page loaded and reported back. Bots and link previews are excluded.",
         },
     }
+    return {"overview": overview, "locations": location_rows}
 
 
+def compute_overview(period: str, qr_id: str) -> dict[str, Any]:
+    return compute_full(period, qr_id)["overview"]
+
+
+# --------------------------------------------------------------------------
+# Cache: answer instantly, refresh in the background
+# --------------------------------------------------------------------------
+_KEY_LOCKS: dict[tuple[str, str, str], threading.Lock] = {}
+_REFRESHING: set[tuple[str, str, str]] = set()
+
+
+def _store(key: tuple[str, str, str], value: dict[str, Any]) -> None:
+    with _CACHE_LOCK:
+        if len(_CACHE) > 128:
+            _CACHE.clear()
+        _CACHE[key] = (time.monotonic(), value)
+
+
+def _compute_into_cache(key: tuple[str, str, str]) -> dict[str, Any]:
+    with _CACHE_LOCK:
+        lock = _KEY_LOCKS.setdefault(key, threading.Lock())
+    with lock:
+        cached = _CACHE.get(key)
+        if cached and time.monotonic() - cached[0] < _CACHE_TTL_SECONDS:
+            return cached[1]
+        value = compute_full(key[1], key[2])
+        _store(key, value)
+        return value
+
+
+def _refresh_in_background(key: tuple[str, str, str]) -> None:
+    with _CACHE_LOCK:
+        if key in _REFRESHING:
+            return
+        _REFRESHING.add(key)
+
+    def run() -> None:
+        try:
+            _compute_into_cache(key)
+        except Exception:
+            pass
+        finally:
+            with _CACHE_LOCK:
+                _REFRESHING.discard(key)
+
+    threading.Thread(target=run, name="qr-insights-refresh", daemon=True).start()
+
+
+def _full(period: str, qr_id: str) -> dict[str, Any]:
+    key = (str(get_database().path), period, qr_id)
+    cached = _CACHE.get(key)
+    if cached:
+        if time.monotonic() - cached[0] >= _CACHE_TTL_SECONDS:
+            _refresh_in_background(key)  # serve the last result now; fresh numbers follow
+        return cached[1]
+    return _compute_into_cache(key)
+
+
+def prewarm() -> None:
+    """Keep the common views ready so nobody waits (called every minute at startup)."""
+    database = get_database()
+    for period in ("30d", "7d", "90d", "all"):
+        key = (str(database.path), period, "")
+        try:
+            value = compute_full(period, "")
+            _store(key, value)
+        except Exception:
+            pass
+
+
+async def prewarm_loop() -> None:
+    import asyncio
+
+    await asyncio.sleep(20)
+    while True:
+        try:
+            await asyncio.to_thread(prewarm)
+        except Exception:
+            pass
+        await asyncio.sleep(55)
+
+
+# --------------------------------------------------------------------------
+# Endpoints
+# --------------------------------------------------------------------------
 @router.get("/overview")
 def overview(
     period: Literal["7d", "30d", "90d", "365d", "all"] = Query("30d"),
     qr_id: str = Query("", max_length=120),
 ) -> dict[str, Any]:
-    key = (str(get_database().path), period, qr_id)
-    cached = _CACHE.get(key)
-    if cached and time.monotonic() - cached[0] < _CACHE_TTL_SECONDS:
-        return copy.deepcopy(cached[1])
-    with _CACHE_LOCK:
-        cached = _CACHE.get(key)
-        if cached and time.monotonic() - cached[0] < _CACHE_TTL_SECONDS:
-            return copy.deepcopy(cached[1])
-        result = compute_overview(period, qr_id)
-        if len(_CACHE) > 128:
-            _CACHE.clear()
-        _CACHE[key] = (time.monotonic(), result)
-        return copy.deepcopy(result)
+    return copy.deepcopy(_full(period, qr_id)["overview"])
+
+
+@router.get("/locations")
+def locations(
+    period: Literal["7d", "30d", "90d", "365d", "all"] = Query("30d"),
+    qr_id: str = Query("", max_length=120),
+) -> dict[str, Any]:
+    full = _full(period, qr_id)
+    return {"period": period, "qr_id": qr_id or None, "generated_at": full["overview"]["generated_at"],
+            "total_scans": full["overview"]["totals"]["scans"], "items": copy.deepcopy(full["locations"])}
+
+
+def _csv_cell(value: object) -> str:
+    text = "" if value is None else str(value)
+    return "'" + text if text[:1] in {"=", "+", "-", "@"} else text
+
+
+def _csv_response(header: list[str], rows: list[list[object]], filename: str) -> Response:
+    stream = io.StringIO(newline="")
+    writer = csv.writer(stream)
+    writer.writerow(header)
+    for row in rows:
+        writer.writerow([_csv_cell(v) for v in row])
+    return Response(
+        content="\ufeff" + stream.getvalue(), media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"', "Cache-Control": "no-store"},
+    )
+
+
+def _file_tag(period: str, qr_id: str) -> str:
+    return f"{period}{'-' + qr_id[:12] if qr_id else ''}-{datetime.now(IST).strftime('%Y%m%d-%H%M')}"
+
+
+@router.get("/locations.csv")
+def locations_csv(
+    period: Literal["7d", "30d", "90d", "365d", "all"] = Query("30d"),
+    qr_id: str = Query("", max_length=120),
+) -> Response:
+    items = _full(period, qr_id)["locations"]
+    rows = [[i["country"], i["state"], i["city"], i["scans"], i["devices"], i["share"], i["network"], _ist_text(i["last_scan"])] for i in items]
+    return _csv_response(
+        ["Country", "State / Region", "City (approx., network city)", "Verified scans", "Unique devices", "Share %", "Main network", "Last scan (IST)"],
+        rows, f"nexttoppers-qr-locations-{_file_tag(period, qr_id)}.csv",
+    )
+
+
+@router.get("/scans.csv")
+def scans_csv(
+    period: Literal["7d", "30d", "90d", "365d", "all"] = Query("30d"),
+    qr_id: str = Query("", max_length=120),
+) -> Response:
+    database = get_database()
+    where, params, _, _, _ = _scope(period, qr_id)
+    with database.connect() as connection:
+        rows = connection.execute(
+            f"""SELECT s.id,s.scanned_at,q.name AS qr_name,s.country,s.device_type,s.operating_system,s.browser,
+                       s.platform,s.source_confidence,s.referrer_host,s.language,s.visitor_hash,s.scanner_email
+                FROM qr_scans s LEFT JOIN qr_codes q ON q.id=s.qr_id
+                WHERE {' AND '.join(where)} ORDER BY s.id DESC""",
+            tuple(params),
+        ).fetchall()
+    geo = _geo(database)
+    out: list[list[object]] = []
+    for row in rows:
+        region, city, network = geo.get(int(row["id"]))
+        _, label, _, known = _classify_cached(str(row["platform"] or ""), str(row["source_confidence"] or ""), str(row["referrer_host"] or ""))
+        out.append([
+            _ist_text(row["scanned_at"]), row["qr_name"] or "Deleted QR", row["country"], region, city, network,
+            label, {"tagged": "Tagged", "detected": "Detected", "not_reported": "Not reported"}.get(known, known),
+            row["referrer_host"], row["device_type"], row["operating_system"], row["browser"], row["language"],
+            f"Device {str(row['visitor_hash'] or '')[:8].upper()}", row["scanner_email"] or "",
+        ])
+    return _csv_response(
+        ["Scanned at (IST)", "QR code", "Country", "State / Region", "City (approx.)", "Network", "Source",
+         "How source is known", "Referrer", "Device", "Operating system", "Browser", "Language", "Device ID", "Email (if given)"],
+        out, f"nexttoppers-qr-scans-{_file_tag(period, qr_id)}.csv",
+    )

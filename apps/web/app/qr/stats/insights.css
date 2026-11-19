@@ -204,3 +204,22 @@ html[data-theme="dark"] .qi-page {
   .qi-chip { flex: 1 1 auto; justify-content: center; }
 }
 .qi-muted-small { color: var(--qi-muted); font-size: 12px; font-weight: 700; white-space: nowrap; }
+
+/* Downloads + location details */
+.qi-downloads { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; justify-content: flex-end; margin-top: 4px; }
+.qi-downloads a, .qi-more { display: inline-flex; align-items: center; height: 34px; padding: 0 13px; border-radius: 10px; border: 1px solid var(--qi-line); background: var(--qi-card); color: var(--qi-ink); font: inherit; font-size: 12.5px; font-weight: 700; text-decoration: none; cursor: pointer; }
+.qi-downloads a:hover, .qi-more:hover { border-color: var(--qi-accent); color: var(--qi-accent); }
+.qi-wrap { flex-wrap: wrap; justify-content: flex-end; }
+.qi-filter { height: 34px; min-width: 210px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--qi-line); background: var(--qi-soft); color: var(--qi-ink); font: inherit; font-size: 13px; outline: none; }
+.qi-filter:focus { border-color: var(--qi-accent); background: var(--qi-card); }
+.qi-panel-aside .qi-chip { height: 34px; font-size: 12.5px; }
+.qi-top-caption { margin: -4px 0 10px; }
+.qi-table th.num, .qi-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.qi-more { margin: 12px auto 0; display: flex; }
+.qi-link-block { display: inline-block; margin-top: 12px; }
+@media (max-width: 560px) {
+  .qi-downloads { justify-content: flex-start; }
+  .qi-downloads a { flex: 1 1 auto; justify-content: center; }
+  .qi-filter { min-width: 0; width: 100%; }
+  .qi-panel-aside.qi-wrap { width: 100%; justify-content: flex-start; }
+}

@@ -37,6 +37,8 @@ type RecentScan = {
 };
 type RecentResponse = { items: RecentScan[]; next_cursor: number | null; has_more: boolean };
 type QrLookup = { id: string; name: string; total_scans: number };
+type Place = { country: string; state: string; city: string; scans: number; devices: number; share: number; network: string; last_scan: string };
+type LocationsResponse = { total_scans: number; items: Place[] };
 
 const PERIODS: Array<[Period, string]> = [["7d", "7 days"], ["30d", "30 days"], ["90d", "90 days"], ["365d", "1 year"], ["all", "All time"]];
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -125,6 +127,60 @@ function WeekChart({ days }: { days: number[] }) {
   return <div className="qi-week">{days.map((v, i) => <div key={WEEKDAYS[i]}><span>{WEEKDAYS[i]}</span><i><b style={{ width: `${(v / max) * 100}%` }} /></i><em>{num(v)}</em></div>)}</div>;
 }
 
+function LocationDetails({ period, qrId }: { period: Period; qrId: string }) {
+  const [items, setItems] = useState<Place[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [query, setQuery] = useState("");
+  const [group, setGroup] = useState<"city" | "state">("city");
+  const [limit, setLimit] = useState(25);
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true); setLimit(25);
+    const p = new URLSearchParams({ period }); if (qrId) p.set("qr_id", qrId);
+    fetch(`${PUBLIC_API_URL}/api/v1/qr-insights/locations?${p.toString()}`, { cache: "no-store" })
+      .then((r) => r.ok ? r.json() as Promise<LocationsResponse> : Promise.reject(new Error("load")))
+      .then((d) => { if (!cancelled) { setItems(d.items); setTotal(d.total_scans); } })
+      .catch(() => { if (!cancelled) setItems([]); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [period, qrId]);
+  const rows = useMemo(() => {
+    let list: Place[] = items;
+    if (group === "state") {
+      const map = new Map<string, Place & { nets: Map<string, number> }>();
+      for (const it of items) {
+        const key = `${it.country}|${it.state}`;
+        const cur = map.get(key) ?? { ...it, city: "", scans: 0, devices: 0, share: 0, nets: new Map<string, number>() };
+        cur.scans += it.scans; cur.devices += it.devices; cur.share += it.share;
+        cur.nets.set(it.network, (cur.nets.get(it.network) ?? 0) + it.scans);
+        if (it.last_scan > cur.last_scan) cur.last_scan = it.last_scan;
+        map.set(key, cur);
+      }
+      list = [...map.values()].map((x) => ({ ...x, share: Math.round(x.share * 10) / 10, network: [...x.nets.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "Not reported" })).sort((a, b) => b.scans - a.scans);
+    }
+    const q = query.trim().toLowerCase();
+    return q ? list.filter((r) => `${r.city} ${r.state} ${countryName(r.country)} ${r.network}`.toLowerCase().includes(q)) : list;
+  }, [items, group, query]);
+  const p = new URLSearchParams({ period }); if (qrId) p.set("qr_id", qrId);
+  return <section className="qi-panel qi-wide" id="locations">
+    <header><div><span className="qi-kicker">Location details</span><h2>Every state and city</h2></div>
+      <div className="qi-panel-aside qi-wrap">
+        <div className="qi-tabs" role="tablist"><button type="button" className={group === "city" ? "active" : ""} onClick={() => setGroup("city")}>Cities</button><button type="button" className={group === "state" ? "active" : ""} onClick={() => setGroup("state")}>States</button></div>
+        <input className="qi-filter" value={query} onChange={(e: ChangeEvent<HTMLInputElement>) => { setQuery(e.target.value); setLimit(25); }} placeholder="Search state, city, network…" aria-label="Search locations" />
+        <a className="qi-chip" href={`${PUBLIC_API_URL}/api/v1/qr-insights/locations.csv?${p.toString()}`}>⬇ Download (Excel)</a>
+      </div>
+    </header>
+    <p className="qi-caption qi-top-caption">{loading ? "Loading locations…" : `${num(rows.length)} ${group === "city" ? "places" : "states"} · ${num(total)} verified scans. City = the internet network's city (approximate); state is reliable.`}</p>
+    <div className="qi-table-wrap"><table className="qi-table"><thead><tr><th>{group === "city" ? "City (approx.)" : "State"}</th>{group === "city" ? <th>State</th> : null}<th>Country</th><th className="num">Scans</th><th className="num">Devices</th><th className="num">Share</th><th>Main network</th><th>Last scan</th></tr></thead>
+      <tbody>{rows.slice(0, limit).map((r) => <tr key={`${r.country}|${r.state}|${r.city}`}>
+        <td><strong>{group === "city" ? r.city : r.state}</strong></td>{group === "city" ? <td>{r.state}</td> : null}
+        <td>{flag(r.country)} {countryName(r.country)}</td><td className="num">{num(r.scans)}</td><td className="num">{num(r.devices)}</td><td className="num">{r.share}%</td><td>{r.network}</td><td>{r.last_scan ? timeLabel(r.last_scan) : "–"}</td>
+      </tr>)}{!loading && !rows.length ? <tr><td colSpan={8} className="qi-empty">No locations match.</td></tr> : null}</tbody></table></div>
+    {rows.length > limit ? <button type="button" className="qi-more" onClick={() => setLimit((l) => l + 50)}>Show more ({num(rows.length - limit)} left)</button> : null}
+  </section>;
+}
+
 function Panel({ kicker, title, aside, children, className }: { kicker?: string; title: string; aside?: ReactNode; children: ReactNode; className?: string }) {
   return <section className={`qi-panel ${className ?? ""}`}><header><div>{kicker ? <span className="qi-kicker">{kicker}</span> : null}<h2>{title}</h2></div>{aside ? <div className="qi-panel-aside">{aside}</div> : null}</header>{children}</section>;
 }
@@ -191,6 +247,7 @@ export default function QrInsightsPage() {
     return data.states.slice(0, 12).map((s) => ({ key: `${s.state}|${s.country}`, label: s.state, hint: s.country === "IN" ? "" : countryName(s.country), scans: s.scans }));
   }, [data, geoView]);
   const quality = data?.source_quality;
+  const downloadQuery = (() => { const p = new URLSearchParams({ period }); if (qrId) p.set("qr_id", qrId); return p.toString(); })();
 
   return <main className="qrfy-page qi-page">
     <QrProductNav />
@@ -211,7 +268,12 @@ export default function QrInsightsPage() {
       </div>
     </header>
 
-    <nav className="qi-periods" aria-label="Time period">{PERIODS.map(([value, label]) => <button key={value} type="button" className={period === value ? "active" : ""} onClick={() => setPeriod(value)}>{label}</button>)}<span className="qi-updated">{data ? `Updated ${timeLabel(data.generated_at)} · India time` : ""}</span></nav>
+    <nav className="qi-periods" aria-label="Time period">{PERIODS.map(([value, label]) => <button key={value} type="button" className={period === value ? "active" : ""} onClick={() => setPeriod(value)}>{label}</button>)}<span className="qi-updated">{data ? `Updated ${timeLabel(data.generated_at)} · India time` : ""}</span>
+      <div className="qi-downloads" aria-label="Downloads">
+        <a href={`${PUBLIC_API_URL}/api/v1/qr-insights/scans.csv?${downloadQuery}`}>⬇ All scans (Excel)</a>
+        <a href={`${PUBLIC_API_URL}/api/v1/qr-insights/locations.csv?${downloadQuery}`}>⬇ Locations (Excel)</a>
+        <a href={`${PUBLIC_API_URL}/api/v1/qr-reports/export.pdf?${downloadQuery}`}>⬇ PDF report</a>
+      </div></nav>
 
     {error ? <div className="qi-error" role="alert">{error} <button type="button" onClick={() => void load()}>Retry</button></div> : null}
 
@@ -242,6 +304,7 @@ export default function QrInsightsPage() {
 
       <Panel kicker="Location" title="Where people are" aside={<div className="qi-tabs" role="tablist">{(["states", "cities", "countries", "networks"] as const).map((v) => <button key={v} type="button" role="tab" aria-selected={geoView === v} className={geoView === v ? "active" : ""} onClick={() => setGeoView(v)}>{v === "states" ? "States" : v === "cities" ? "Cities" : v === "countries" ? "Countries" : "Networks"}</button>)}</div>}>
         <BarList rows={geoRows} total={total} empty="No location reported for these scans." />
+        <a className="qi-link qi-link-block" href="#locations">See every state & city, and download →</a>
         <p className="qi-note">{geoView === "cities" ? "Approximate: this is the city of the mobile or internet network. On Indian mobile data it is often the operator's hub city (e.g. Patna for much of Bihar)." : geoView === "networks" ? "Mobile operator or internet provider reported for the scan." : `From the visitor's internet network. Location reported for ${data?.accuracy.location_coverage ?? 0}% of scans in this period.`}</p>
       </Panel>
 
@@ -259,6 +322,8 @@ export default function QrInsightsPage() {
         </div>
       </Panel>
     </div>
+
+    <LocationDetails period={period} qrId={qrId} />
 
     {!qrId && data?.top_qr_codes.length ? <Panel kicker="Portfolio" title="Top QR codes" className="qi-wide">
       <ol className="qi-top">{data.top_qr_codes.map((row, i) => <li key={row.id}><button type="button" onClick={() => chooseQr(row.id)}><span className="qi-rank">{i + 1}</span><strong>{row.name}</strong><span className="qi-top-bar"><b style={{ width: `${(row.scans / Math.max(1, data.top_qr_codes[0]?.scans ?? 1)) * 100}%` }} /></span><em>{num(row.scans)}</em><small>{pct(row.scans, total)}</small></button></li>)}</ol>
