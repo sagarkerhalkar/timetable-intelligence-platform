@@ -242,7 +242,7 @@ function Start-Website($Plan) {
         $env:HOSTNAME = "0.0.0.0"
         Start-Process -FilePath $Plan.Node -ArgumentList "`"$($Plan.ServerJs)`"" -WorkingDirectory (Split-Path -Parent $Plan.ServerJs) -WindowStyle Hidden
     } else {
-        Start-Process -FilePath $Plan.Node -ArgumentList "`"$($Plan.NextBin)`" start -p $WebPort" -WorkingDirectory $Plan.Web -WindowStyle Hidden
+        Start-Process -FilePath $Plan.Node -ArgumentList "`"$($Plan.NextBin)`" start --hostname 0.0.0.0 --port $WebPort" -WorkingDirectory $Plan.Web -WindowStyle Hidden
     }
     for ($i = 0; $i -lt 24; $i++) {
         Start-Sleep -Seconds 5
@@ -408,6 +408,10 @@ if ($webCopy.Count) {
     Say ("  Settings files (names only): " + $(if ($envNames.Count) { $envNames -join ' | ' } else { "none" }))
     Say ("  NODE_OPTIONS set: " + $(if ($env:NODE_OPTIONS) { "yes" } else { "no" }))
 
+    # Build with the copy's OWN Next.js. Running the live folder's Next.js on the copy loads two
+    # copies of Next.js at once ("Expected workStore to be initialized").
+    $stageNextBin = Join-Path $wstage "node_modules\next\dist\bin\next"
+    if (-not (Test-Path -LiteralPath $stageNextBin)) { throw "Next.js is missing in the build copy. Live website NOT changed. Send this window to Claude." }
     $attempts = @("turbopack", "webpack")
     if ($liveBuilder -eq "webpack") { $attempts = @("webpack", "turbopack") }
     $built = $false
@@ -417,8 +421,8 @@ if ($webCopy.Count) {
         Say "  Building with $builder..."
         Push-Location $wstage
         try {
-            if ($builder -eq "webpack") { $buildOut = Invoke-Native { & $plan.Node $plan.NextBin build --webpack 2>&1 | Out-String } }
-            else { $buildOut = Invoke-Native { & $plan.Node $plan.NextBin build 2>&1 | Out-String } }
+            if ($builder -eq "webpack") { $buildOut = Invoke-Native { & $plan.Node $stageNextBin build --webpack 2>&1 | Out-String } }
+            else { $buildOut = Invoke-Native { & $plan.Node $stageNextBin build 2>&1 | Out-String } }
             $buildCode = $LASTEXITCODE
         } finally { Pop-Location }
         if ($buildCode -eq 0 -and (Test-Path -LiteralPath (Join-Path $wstage ".next\BUILD_ID"))) { $built = $true; Say "  Build with $builder succeeded." "Green"; break }
