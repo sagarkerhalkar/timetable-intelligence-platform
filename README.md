@@ -63,6 +63,46 @@ It stops if the live file is not the reviewed version, tests the new code in a
 temporary copy, backs up, restarts only the QR API, and checks the number of QR
 codes and scans. If a check fails it puts the old file back by itself.
 
+## Update: QR speed and scan safety (19 Nov 2026)
+
+**Why:** QR pages (My QR Codes, QR Analytics, Geo & Device Analytics) took 2–4 s and
+sometimes failed. Every QR page request re-ran the whole QR database setup script
+(including DROP/CREATE TRIGGER), which needs the database write lock. Requests queued
+behind each other and behind scan inserts. A scan that waited more than 5 s failed,
+and because the Worker sends each scan only once, that scan was lost.
+
+**What changes** (QR API only): the setup script runs once; "recent scans" reads the
+newest rows directly instead of sorting all scans; analytics (10 s) and geo/device
+reports (60 s) share a short cache; a scan that hits a busy database is retried
+(a repeated scan is never counted twice). Nothing in the database changes.
+
+Measured on a copy with 400,000 scans: recent scans 160–225 ms → under 1 ms; reports
+reloads ~380 ms → under 1 ms; with 6 dashboards open while scans arrive, dashboard
+calls went from 540 ms typical (10 lock errors) to 1 ms (no errors).
+
+Run on the server (PowerShell, **Run as administrator**), preferably at a quiet time:
+
+```powershell
+$Review = Join-Path $HOME "NextToppers-Review"
+git -C $Review fetch origin
+git -C $Review checkout fix/qr-speed-and-scan-safety   # or main, after the PR is merged
+powershell -ExecutionPolicy Bypass -File "$Review\tools\qr-speed-fix\UPDATE_QR_SPEED_FIX.ps1" -CheckOnly
+powershell -ExecutionPolicy Bypass -File "$Review\tools\qr-speed-fix\UPDATE_QR_SPEED_FIX.ps1"
+```
+
+Same safety as the fast-sync update: it stops if the live files are not the reviewed
+version, tests in a temporary copy, backs up, restarts only the QR API, compares QR
+and scan counts, and puts the old files back by itself if any check fails.
+
+Two more changes in this branch take effect only when deployed separately:
+
+- `worker/src/index.js` – the Worker retries a scan confirmation (after 1.5 s and 5 s)
+  when your server is busy or restarting. Deploy it the way the Worker `q` is normally
+  deployed.
+- `apps/web/components/navigation-links.tsx`, `qr-product-nav.tsx` – menu links no
+  longer fully pre-render every page in the background (each page open used to
+  render ~14 other pages on the server). Takes effect at the next website build.
+
 ## QR reports
 
 See [docs/QR_REPORTS_GUIDE.md](docs/QR_REPORTS_GUIDE.md).

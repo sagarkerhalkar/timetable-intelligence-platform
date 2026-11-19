@@ -109,14 +109,24 @@ async function handleBeacon(request, env, ctx, slug) {
   payload.edge = edgeData(request);
   payload.user_agent = String(payload.user_agent || request.headers.get("user-agent") || "").slice(0,700);
   const apiBase = cleanBase(env.API_BASE);
-  ctx.waitUntil(
-    fetch(`${apiBase}/api/v1/qr-fast/${encodeURIComponent(slug)}/confirm`, {
-      method:"POST",
-      headers:{"content-type":"application/json","x-nexttoppers-qr-gateway":"edge-kv-analytics"},
-      body:JSON.stringify(payload),
-      redirect:"manual",
-    }).catch(()=>null)
-  );
+  const body = JSON.stringify(payload);
+  // Retry when the origin is busy, restarting or briefly unreachable, so the
+  // scan is not lost. Safe: the API ignores a repeated event_id (unique hash).
+  const confirm = async () => {
+    for (const wait of [0, 1500, 5000]) {
+      if (wait) await new Promise(r => setTimeout(r, wait));
+      try {
+        const response = await fetch(`${apiBase}/api/v1/qr-fast/${encodeURIComponent(slug)}/confirm`, {
+          method:"POST",
+          headers:{"content-type":"application/json","x-nexttoppers-qr-gateway":"edge-kv-analytics"},
+          body,
+          redirect:"manual",
+        });
+        if (response.ok || (response.status >= 400 && response.status < 500 && response.status !== 408 && response.status !== 429)) return;
+      } catch {}
+    }
+  };
+  ctx.waitUntil(confirm().catch(()=>null));
   return new Response(null,{status:204,headers:{"cache-control":"no-store","x-ntqr-fast":"5","x-ntqr-source":"edge-kv"}});
 }
 

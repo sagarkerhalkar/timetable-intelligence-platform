@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import copy
 import json
+import threading
+import time
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Literal
 
@@ -12,6 +15,30 @@ from ..dependencies import get_database
 
 router = APIRouter(prefix="/api/v1/qr-scale", tags=["qr-scale"])
 _SCHEMA_VERSION = "3"
+
+# The aggregate schema only has to be checked once per database per process.
+# Earlier every QR page request re-ran the whole schema script, including
+# DROP/CREATE TRIGGER. That needs the database write lock, so dashboard
+# requests queued behind each other and behind QR scan inserts (slow pages,
+# "database is locked" errors and lost scan confirmations).
+_SCHEMA_READY: set[str] = set()
+_SCHEMA_LOCK = threading.Lock()
+
+# Very short read cache for the analytics summary. Numbers come from the
+# background aggregates (updated every ~2 s), so a few seconds is invisible to
+# people but stops many open dashboards from repeating identical queries.
+_ANALYTICS_TTL_SECONDS = 10.0
+_ANALYTICS_CACHE: dict[tuple[str, str, str], tuple[float, dict[str, Any]]] = {}
+_ANALYTICS_LOCK = threading.Lock()
+
+
+def _schema_ready() -> None:
+    key = str(get_database().path)
+    if key in _SCHEMA_READY:
+        return
+    with _SCHEMA_LOCK:
+        if key not in _SCHEMA_READY:
+            ensure_qr_scale_schema()
 
 
 def _encode_cursor(payload: dict[str, Any]) -> str:
@@ -192,6 +219,7 @@ def ensure_qr_scale_schema() -> None:
             "SELECT value FROM app_metadata WHERE key='qr_scale_schema_version'"
         ).fetchone()
         if marker and str(marker[0]) == _SCHEMA_VERSION:
+            _SCHEMA_READY.add(str(database.path))
             return
 
         # New aggregate tables are derived only. Rebuild them from raw QR history once.
@@ -267,6 +295,7 @@ def ensure_qr_scale_schema() -> None:
             "INSERT INTO app_metadata(key,value) VALUES('qr_scale_schema_version',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
             (_SCHEMA_VERSION,),
         )
+    _SCHEMA_READY.add(str(database.path))
 
 
 
@@ -401,7 +430,7 @@ def _filters(q: str, active: str, qr_type: str, template_id: str) -> tuple[list[
 
 @router.get("/health")
 def qr_scale_health() -> dict[str, Any]:
-    ensure_qr_scale_schema()
+    _schema_ready()
     database = get_database()
     with database.connect() as connection:
         values = connection.execute(
@@ -425,7 +454,7 @@ def qr_scale_codes(
     template_id: str = "",
     sort: Literal["recent", "oldest", "name", "scans"] = "recent",
 ) -> dict[str, Any]:
-    ensure_qr_scale_schema()
+    _schema_ready()
     database = get_database()
     decoded = _decode_cursor(cursor)
     clauses, params = _filters(q, active, qr_type, template_id)
@@ -521,7 +550,25 @@ def qr_scale_analytics(
     period: Literal["7d", "30d", "90d", "365d", "all"] = "30d",
     qr_id: str = "",
 ) -> dict[str, Any]:
-    ensure_qr_scale_schema()
+    _schema_ready()
+    key = (str(get_database().path), period, qr_id)
+    now = time.monotonic()
+    cached = _ANALYTICS_CACHE.get(key)
+    if cached and now - cached[0] < _ANALYTICS_TTL_SECONDS:
+        return copy.deepcopy(cached[1])
+    with _ANALYTICS_LOCK:
+        # Another request may have filled the cache while this one waited.
+        cached = _ANALYTICS_CACHE.get(key)
+        if cached and time.monotonic() - cached[0] < _ANALYTICS_TTL_SECONDS:
+            return copy.deepcopy(cached[1])
+        result = _compute_analytics(period, qr_id)
+        if len(_ANALYTICS_CACHE) > 256:
+            _ANALYTICS_CACHE.clear()
+        _ANALYTICS_CACHE[key] = (time.monotonic(), result)
+        return copy.deepcopy(result)
+
+
+def _compute_analytics(period: str, qr_id: str) -> dict[str, Any]:
     database = get_database()
     start = _period_start(period)
     day_clause = ""
@@ -619,9 +666,13 @@ def qr_scale_recent_scans(
     cursor: int | None = Query(None, ge=1),
     qr_id: str = "",
 ) -> dict[str, Any]:
-    ensure_qr_scale_schema()
+    _schema_ready()
     database = get_database()
-    clauses = ["s.confirmed=1", "s.device_type!='bot'"]
+    # The leading "+" stops SQLite from choosing the (confirmed, ...) index here.
+    # That index forced a sort of every confirmed scan just to show the newest
+    # 25 (seconds on a busy server). Walking the primary key backwards finds
+    # the newest rows immediately. Results are identical.
+    clauses = ["+s.confirmed=1", "+s.device_type!='bot'"]
     params: list[Any] = []
     if qr_id:
         clauses.append("s.qr_id=?")

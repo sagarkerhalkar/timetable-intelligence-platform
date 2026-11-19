@@ -1,10 +1,13 @@
 """Read-only QR geo and estimated-device analytics. No redirects or QR writes."""
 from __future__ import annotations
 
+import copy
 import csv
 import hashlib
 import io
 import sqlite3
+import threading
+import time
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -17,6 +20,31 @@ from ..dependencies import get_database
 router = APIRouter(prefix="/api/v1/qr-reports", tags=["qr-reports"])
 PERIODS = {"7d": 7, "30d": 30, "90d": 90, "365d": 365, "all": None}
 DATA_SECTIONS = {"locations", "devices", "types"}
+
+# These reports read every raw scan in the period (seconds on the live server).
+# Keep one copy for a minute so page reloads, several people viewing and the
+# CSV/PDF downloads share one computation instead of each scanning again.
+_REPORT_TTL_SECONDS = 60.0
+_REPORT_CACHE: dict[tuple[str, str, str], tuple[float, dict]] = {}
+_REPORT_LOCK = threading.Lock()
+
+
+def _cached_report(period: str, qr_id: str) -> dict:
+    database = get_database()
+    key = (str(database.path), period, qr_id)
+    cached = _REPORT_CACHE.get(key)
+    if cached and time.monotonic() - cached[0] < _REPORT_TTL_SECONDS:
+        return copy.deepcopy(cached[1])
+    with _REPORT_LOCK:
+        cached = _REPORT_CACHE.get(key)
+        if cached and time.monotonic() - cached[0] < _REPORT_TTL_SECONDS:
+            return copy.deepcopy(cached[1])
+        with database.connect() as connection:
+            report = _report(connection, period, qr_id)
+        if len(_REPORT_CACHE) > 128:
+            _REPORT_CACHE.clear()
+        _REPORT_CACHE[key] = (time.monotonic(), report)
+        return copy.deepcopy(report)
 
 
 def _date_clause(period: str, qr_id: str) -> tuple[str, list[str]]:
@@ -105,9 +133,7 @@ def _report(connection: sqlite3.Connection, period: str, qr_id: str) -> dict:
 def summary(period: str = Query("30d"), qr_id: str = Query("", max_length=120)) -> dict:
     if period not in PERIODS:
         raise HTTPException(status_code=422, detail="Invalid period")
-    database = get_database()
-    with database.connect() as connection:
-        return _report(connection, period, qr_id)
+    return _cached_report(period, qr_id)
 
 
 def _as_csv(records: list[dict]) -> str:
@@ -128,8 +154,7 @@ def export_csv(period: str = Query("30d"), qr_id: str = Query("", max_length=120
                section: str = Query("locations")) -> Response:
     if period not in PERIODS or section not in DATA_SECTIONS:
         raise HTTPException(status_code=422, detail="Invalid report filter")
-    with get_database().connect() as connection:
-        report = _report(connection, period, qr_id)
+    report = _cached_report(period, qr_id)
     name = {"locations": "locations", "devices": "devices", "types": "device_types"}[section]
     rows = report["device_types"] if section == "types" else report[section]
     return Response(content="\ufeff" + _as_csv(rows), media_type="text/csv; charset=utf-8",
@@ -147,8 +172,7 @@ def export_pdf(period: str = Query("30d"), qr_id: str = Query("", max_length=120
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 
-    with get_database().connect() as connection:
-        data = _report(connection, period, qr_id)
+    data = _cached_report(period, qr_id)
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, leftMargin=34, rightMargin=34, topMargin=35, bottomMargin=35)
     styles = getSampleStyleSheet()

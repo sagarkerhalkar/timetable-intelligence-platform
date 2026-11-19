@@ -40,7 +40,6 @@ export function QrProductNav() {
             <Link
               key={tab.href}
               href={tab.href}
-              prefetch
               onClick={(event) => {
                 setPendingHref(tab.href);
                 const details = event.currentTarget.closest("details.mobile-menu") as HTMLDetailsElement | null;
