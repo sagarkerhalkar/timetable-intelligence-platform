@@ -364,6 +364,11 @@ if ($apiCopy.Count) {
 if ($webCopy.Count) {
     Say ""
     Say "4. Website: building the new version in a separate copy (live site untouched)" "Cyan"
+    # Remove build copies left by an earlier failed run (only our own web-stage-* folders; they hold copies, never links).
+    Get-ChildItem -LiteralPath (Join-Path $AppRoot "backups") -Directory -Filter "web-stage-*" -ErrorAction SilentlyContinue | ForEach-Object {
+        Say "  Removing old build copy $($_.Name)"
+        Remove-Item -LiteralPath $_.FullName -Recurse -Force -ErrorAction SilentlyContinue
+    }
     $wstage = Join-Path $AppRoot "backups\web-stage-$Stamp"
     Invoke-Native { & robocopy.exe $plan.Web $wstage /E /XD node_modules .next .turbo coverage test-results playwright-report /XF *.log /NFL /NDL /NJH /NJS /NP | Out-Null }
     if ($LASTEXITCODE -ge 8) { throw "Could not copy the website for building (robocopy $LASTEXITCODE). The QR API update is installed; the website was not changed." }
@@ -378,6 +383,11 @@ if ($webCopy.Count) {
     }
     $env:NEXT_TELEMETRY_DISABLED = "1"
     if (-not $env:INTERNAL_API_URL) { $env:INTERNAL_API_URL = "http://127.0.0.1:$ApiPort" }
+    # next build must run with NODE_ENV=production. Any other value (from this window,
+    # Windows settings or an .env file) makes Next.js 16 fail on "/_global-error".
+    $nodeEnvFiles = @(Get-ChildItem -LiteralPath $wstage -Filter ".env*" -File -Force -ErrorAction SilentlyContinue | Where-Object { Select-String -LiteralPath $_.FullName -Pattern '^\s*NODE_ENV\s*=' -Quiet } | ForEach-Object { $_.Name })
+    Say ("  NODE_ENV before build: window='" + [string]$env:NODE_ENV + "', Windows machine='" + [string][Environment]::GetEnvironmentVariable("NODE_ENV", "Machine") + "', user='" + [string][Environment]::GetEnvironmentVariable("NODE_ENV", "User") + "', set in files: " + $(if ($nodeEnvFiles.Count) { $nodeEnvFiles -join ", " } else { "none" }))
+    $env:NODE_ENV = "production"
     Push-Location $wstage
     try {
         $buildOut = Invoke-Native { & $plan.Node $plan.NextBin build 2>&1 | Out-String }
@@ -386,6 +396,28 @@ if ($webCopy.Count) {
     if ($buildCode -ne 0 -or -not (Test-Path -LiteralPath (Join-Path $wstage ".next\BUILD_ID"))) {
         $tail = ($buildOut -split "`n" | Select-Object -Last 40) -join "`n"
         Say $tail "Yellow"
+        # Diagnose: does the CURRENT (unchanged) website build here? Put the live versions of the
+        # changed files back into the copy and build once more. The live site is still untouched.
+        Say ""
+        Say "  Diagnosis: building the current, unchanged website the same way..." "Cyan"
+        foreach ($f in $WebFiles) {
+            $rel = $f.Rel.Substring("apps\web\".Length)
+            $live = Join-Path $plan.Web $rel
+            $d = Join-Path $wstage $rel
+            if (Test-Path -LiteralPath $live) { Copy-Item -LiteralPath $live -Destination $d -Force } else { Remove-Item -LiteralPath $d -Force -ErrorAction SilentlyContinue }
+        }
+        Remove-Item -LiteralPath (Join-Path $wstage ".next") -Recurse -Force -ErrorAction SilentlyContinue
+        Push-Location $wstage
+        try {
+            $diagOut = Invoke-Native { & $plan.Node $plan.NextBin build 2>&1 | Out-String }
+            $diagCode = $LASTEXITCODE
+        } finally { Pop-Location }
+        if ($diagCode -eq 0) { Say "  DIAGNOSIS: the current website builds, so the problem is in the new files." "Yellow" }
+        else {
+            Say (($diagOut -split "`n" | Where-Object { $_ -match 'Error|error|Invariant|prerender' } | Select-Object -First 8) -join "`n") "Yellow"
+            Say "  DIAGNOSIS: the CURRENT website also fails to build on this server, so the problem is the build setup, not the new files." "Yellow"
+        }
+        Remove-Item -LiteralPath $wstage -Recurse -Force -ErrorAction SilentlyContinue
         throw "The new website did not build, so the live website was NOT changed (the QR API update is installed and working). Send this whole window to Claude."
     }
     Say "  New website built successfully." "Green"
